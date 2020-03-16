@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <numeric>
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <set>
 #include <string>
@@ -34,8 +35,8 @@ enum Heuristic { min_max, min_product };
                              Command-line arguments
 *******************************************************************************/
 
-static char doc[] = "Find a maximum clique in a graph in DIMACS format\vHEURISTIC can be min_max or min_product";
-static char args_doc[] = "HEURISTIC FILENAME1 FILENAME2";
+static char doc[] = "Find a maximum common subgraph of two graphs \vHEURISTIC can be min_max or min_product";
+static char args_doc[] = "HEURISTIC FILENAME1 FILENAME2 OPB_FILENAME PROOF_FILENAME";
 static struct argp_option options[] = {
     {"quiet", 'q', 0, 0, "Quiet output"},
     {"verbose", 'v', 0, 0, "Verbose output"},
@@ -63,6 +64,8 @@ static struct {
     Heuristic heuristic;
     char *filename1;
     char *filename2;
+    char *opb_filename;
+    char *proof_filename;
     int timeout;
     int arg_num;
 } arguments;
@@ -81,6 +84,8 @@ void set_default_arguments() {
     arguments.big_first = false;
     arguments.filename1 = NULL;
     arguments.filename2 = NULL;
+    arguments.opb_filename = NULL;
+    arguments.proof_filename = NULL;
     arguments.timeout = 0;
     arguments.arg_num = 0;
 }
@@ -142,13 +147,17 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
                 arguments.filename1 = arg;
             } else if (arguments.arg_num == 2) {
                 arguments.filename2 = arg;
+            } else if (arguments.arg_num == 3) {
+                arguments.opb_filename = arg;
+            } else if (arguments.arg_num == 4) {
+                arguments.proof_filename = arg;
             } else {
                 argp_usage(state);
             }
             arguments.arg_num++;
             break;
         case ARGP_KEY_END:
-            if (arguments.arg_num == 0)
+            if (arguments.arg_num <= 4)
                 argp_usage(state);
             break;
         default: return ARGP_ERR_UNKNOWN;
@@ -371,8 +380,12 @@ void remove_bidomain(vector<Bidomain>& domains, int idx) {
 
 void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         vector<VtxPair> & current, vector<Bidomain> & domains,
-        vector<int> & left, vector<int> & right, unsigned int matching_size_goal)
+        vector<int> & left, vector<int> & right, unsigned int matching_size_goal,
+        std::ofstream & opb_stream, std::ofstream & proof_stream,
+        const vector<int> & vtx_name0, const vector<int> & vtx_name1)
 {
+    opb_stream << "solve " << nodes << std::endl;
+    proof_stream << "solve " << nodes << std::endl;
     if (abort_due_to_timeout)
         return;
 
@@ -413,16 +426,18 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
                 arguments.directed || arguments.edge_labelled);
         current.push_back(VtxPair(v, w));
-        solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal);
+        solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
+                opb_stream, proof_stream, vtx_name0, vtx_name1);
         current.pop_back();
     }
     bd.right_len++;
     if (bd.left_len == 0)
         remove_bidomain(domains, bd_idx);
-    solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal);
+    solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal,
+            opb_stream, proof_stream, vtx_name0, vtx_name1);
 }
 
-vector<VtxPair> mcs(const Graph & g0, const Graph & g1) {
+vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_name0, const vector<int> & vtx_name1) {
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
 
@@ -458,6 +473,8 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1) {
 
     vector<VtxPair> incumbent;
 
+    std::ofstream opb_stream(arguments.opb_filename);
+    std::ofstream proof_stream(arguments.proof_filename);
     if (arguments.big_first) {
         for (int k=0; k<g0.n; k++) {
             unsigned int goal = g0.n - k;
@@ -465,14 +482,16 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1) {
             auto right_copy = right;
             auto domains_copy = domains;
             vector<VtxPair> current;
-            solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal);
+            solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal, opb_stream, proof_stream,
+                    vtx_name0, vtx_name1);
             if (incumbent.size() == goal || abort_due_to_timeout) break;
             if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
         }
 
     } else {
         vector<VtxPair> current;
-        solve(g0, g1, incumbent, current, domains, left, right, 1);
+        solve(g0, g1, incumbent, current, domains, left, right, 1, opb_stream, proof_stream,
+                vtx_name0, vtx_name1);
     }
 
     return incumbent;
@@ -556,7 +575,7 @@ int main(int argc, char** argv) {
     struct Graph g0_sorted = induced_subgraph(g0, vv0);
     struct Graph g1_sorted = induced_subgraph(g1, vv1);
 
-    vector<VtxPair> solution = mcs(g0_sorted, g1_sorted);
+    vector<VtxPair> solution = mcs(g0_sorted, g1_sorted, vv0, vv1);
 
     // Convert to indices from original, unsorted graphs
     for (auto& vtx_pair : solution) {
