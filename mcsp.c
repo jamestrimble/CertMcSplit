@@ -320,6 +320,87 @@ InequalityGeq objective_constraint(int pattern_count, int target_count, int goal
     return constraint;
 }
 
+// The A <===> B AND C decomposition has three parts.
+// `part` is 1, 2, or 3
+InequalityGeq constraint_A_implies_B_and_C(Term term1, Term term2, Term term3, int part)
+{
+    InequalityGeq constraint {};
+    if (part == 1) {
+        term1.coef = -1;
+        constraint.add_term(term1);
+        constraint.add_term(term2);
+        constraint.set_rhs(0);
+    } else if (part == 2) {
+        term1.coef = -1;
+        constraint.add_term(term1);
+        constraint.add_term(term3);
+        constraint.set_rhs(0);
+    } else {
+        term2.coef = -1;
+        term3.coef = -1;
+        constraint.add_term(term1);
+        constraint.add_term(term2);
+        constraint.add_term(term3);
+        constraint.set_rhs(-1);
+    }
+    return constraint;
+}
+
+InequalityGeq connectedness_inductive_case_a(int k, int u, int v, int w, const Graph & pattern_g, int part)
+{
+    Term term1 {1, false, c3_var_name(k, u, v, w)};
+    Term term2 {1, false, c2_var_name(k-1, u, v)};
+    Term term3 {1, false, c2_var_name(k-1, v, w)};
+    return constraint_A_implies_B_and_C(term1, term2, term3, part);
+}
+
+InequalityGeq connectedness_inductive_case_b(int k, int u, int w, const Graph & pattern_g)
+{
+    InequalityGeq constraint {};
+    constraint.add_term({1, true, c2_var_name(k, u, w)});
+    for (int v=0; v<pattern_g.n; v++) {
+        constraint.add_term({1, false, c3_var_name(k, u, v, w)});
+    }
+    constraint.set_rhs(1);
+    return constraint;
+}
+
+InequalityGeq connectedness_base_constraint_2vv(int u, int w, const Graph & pattern_g,
+        int part)
+{
+    Term term1 {1, false, c2_var_name(0, u, w)};
+    Term term2 {1, true, assignment_var_name(u, -1)};
+    Term term3 {1, true, assignment_var_name(w, -1)};
+    return constraint_A_implies_B_and_C(term1, term2, term3, part);
+}
+
+// The A <===> B decomposition has two parts.
+// `part` is 1 or 2
+InequalityGeq connectedness_base_constraint_1v(int k, int u, const Graph & pattern_g,
+        int part)
+{
+    Term term1 {part==2 ? 1 : -1, true, c2_var_name(k, u, u)};
+    Term term2 {part==2 ? 1 : -1, true, assignment_var_name(u, -1)};
+    InequalityGeq constraint {};
+    constraint.add_term(term1);
+    constraint.add_term(term2);
+    constraint.set_rhs(part == 2 ? 1 : -1);
+    return constraint;
+}
+
+InequalityGeq connectedness_constraint(int K, int p, int q)
+{
+    Term term1 {1, false, c2_var_name(K, p, q)};
+    Term term2 {1, false, assignment_var_name(p, -1)};
+    Term term3 {1, false, assignment_var_name(q, -1)};
+    InequalityGeq constraint;
+    constraint.add_term(term1)
+            .add_term(term2)
+            .add_term(term3)
+            .set_rhs(1);
+    return constraint;
+}
+
 /*******************************************************************************
                                      Stats
 *******************************************************************************/
@@ -774,6 +855,89 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
             }
         }
     }
+
+    if (arguments.connected) {
+        // base case
+        for (int u=0; u<g0.n; u++) {
+            for (int w=0; w<g0.n; w++) {
+                if (u == w) {
+                    for (int part=1; part<=2; part++) {
+                        InequalityGeq constraint = connectedness_base_constraint_1v(0, u, g0, part);
+                        if (part == 1) {
+                            constraint.set_comment("Base connectedness constraint for vertex " + std::to_string(u));
+                        }
+                        pb_model.add_constraint(constraint);
+                    }
+                } else if (g0.adjmat[u][w]) {
+                    for (int part=1; part<=3; part++) {
+                        InequalityGeq constraint = connectedness_base_constraint_2vv(u, w, g0, part);
+                        if (part == 1) {
+                            constraint.set_comment("Base connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
+                        }
+                        pb_model.add_constraint(constraint);
+                    }
+                } else {
+                    InequalityGeq constraint;
+                    constraint.add_term({-1, false, c2_var_name(0, u, w)});
+                    constraint.set_rhs(0);
+                    constraint.set_comment("Base case non-connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
+                    pb_model.add_constraint(constraint);
+                }
+            }
+        }
+
+        // inductive case
+        // TODO: make this right. just copied from base case at moment. need to handle u==w correctly
+        int k = 1;
+        while ((1 << k) + 1 < g0.n) {
+            for (int u=0; u<g0.n; u++) {
+                for (int part=1; part<=2; part++) {
+                    InequalityGeq constraint = connectedness_base_constraint_1v(k, u, g0, part);
+                    if (part == 1) {
+                        constraint.set_comment("Base connectedness constraint for vertex " + std::to_string(u));
+                    }
+                    pb_model.add_constraint(constraint);
+                }
+                for (int w=0; w<g0.n; w++) {
+                    if (u == w) {
+                        continue;
+                    }
+                    for (int v=0; v<g0.n; v++) {
+                        for (int part=1; part<=3; part++) {
+                            InequalityGeq constraint = connectedness_inductive_case_a(k, u, v, w, g0, part);
+                            if (part == 1) {
+                                constraint.set_comment("Inductive connectedness constraint part a for k=" + std::to_string(k)
+                                        + " u=" + std::to_string(u)
+                                        + " v=" + std::to_string(v)
+                                        + " w=" + std::to_string(w));
+                            }
+                            pb_model.add_constraint(constraint);
+                        }
+                    }
+                    InequalityGeq constraint = connectedness_inductive_case_b(k, u, w, g0);
+                    constraint.set_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
+                            + " u=" + std::to_string(u)
+                            + " w=" + std::to_string(w));
+                    pb_model.add_constraint(constraint);
+                }
+            }
+            ++k;
+        }
+        int K = k - 1;
+        // connectivity constraints
+        for (int p=0; p<g0.n; p++) {
+            for (int q=0; q<g0.n; q++) {
+                if (p == q) {
+                    continue;
+                }
+                InequalityGeq constraint = connectedness_constraint(K, p, q);
+                constraint.set_comment("Connectedness constraint p=" + std::to_string(p)
+                        + " q=" + std::to_string(q));
+                pb_model.add_constraint(constraint);
+            }
+        }
+    }
+
     pb_model.output_model(opb_stream);
 
     int last_constraint_num = pb_model.last_constraint_number();
