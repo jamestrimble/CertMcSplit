@@ -597,7 +597,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 
     unsigned int bound = current.size() + calc_bound(domains);
     if (bound <= incumbent.size() || bound < matching_size_goal) {
-        if (log_proof) {
+        if (log_proof && !domains.empty()) {
             write_bound_constraint(domains, left, right, mapping_constraint_nums,
                     injectivity_constraint_nums, proof_stream);
             ++last_constraint_num;
@@ -630,17 +630,23 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
                 arguments.directed || arguments.edge_labelled);
         current.push_back(VtxPair(v, w));
+//        if (log_proof)
+//            proof_stream << "* decision " << v << " " << w << std::endl;
         decisions.push_back({-1, false, assignment_var_name(v, w)});
         solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
                 proof_stream, vtx_name0, vtx_name1,
                 mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
                 decisions, log_proof);
-        current.pop_back();
         if (log_proof) {
             write_backtracking_constraint(decisions, proof_stream);
             ++last_constraint_num;
         }
+//        if (log_proof)
+//            proof_stream << "* undo decision " << v << " " << w << std::endl;
+        current.pop_back();
         decisions.pop_back();
+//        if (log_proof)
+//            proof_stream << "* decision not" << v << " " << w << std::endl;
         decisions.push_back({-1, true, assignment_var_name(v, w)});
     }
     bd.right_len++;
@@ -651,6 +657,10 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
             proof_stream, vtx_name0, vtx_name1,
             mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
             decisions, log_proof);
+//    if (log_proof) {
+//        write_backtracking_constraint(decisions, proof_stream);
+//        ++last_constraint_num;
+//    }
 }
 
 vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_name0, const vector<int> & vtx_name1) {
@@ -707,7 +717,8 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
 
     } else {
         vector<VtxPair> current;
-        solve(g0, g1, incumbent, current, domains, left, right, 1, proof_stream,
+        auto domains_copy = domains;
+        solve(g0, g1, incumbent, current, domains_copy, left, right, 1, proof_stream,
                 vtx_name0, vtx_name1, {}, {}, unused, {}, false);
     }
 
@@ -734,7 +745,9 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
         injectivity_constraint_nums[i] = pb_model.last_constraint_number();
     }
     for (int p=0; p<g0.n; p++) {
-        for (int q=p+1; q<g0.n; q++) {
+        for (int q=0; q<g0.n; q++) {
+            if (q==p)
+                continue;
             for (int t=0; t<g1.n; t++) {
                 InequalityGeq constraint = adjacency_constraint(p, q, t, g0, g1);
                 if (t == 0) {
@@ -754,7 +767,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
     solve(g0, g1, incumbent, current, domains, left, right, impossible_target, proof_stream,
                 vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
                 last_constraint_num, {}, true);
-    proof_stream << "u >= 1" << std::endl;
+    proof_stream << "u >= 1;" << std::endl;
     ++last_constraint_num;
     proof_stream << "c " << last_constraint_num << " 0" << std::endl;
 
