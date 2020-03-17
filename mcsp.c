@@ -173,13 +173,13 @@ static struct argp argp = { options, parse_opt, args_doc, doc };
 
 struct Term
 {
-    bool is_negated;
     int coef;
+    bool is_negated;
     std::string var;
 
     std::string to_string()
     {
-        return (is_negated ? "~" : "") + std::to_string(coef) + " " + var;
+        return std::to_string(coef) + " " + (is_negated ? "~" : "") + var;
     }
 };
 
@@ -188,8 +188,6 @@ struct InequalityGeq
     std::string comment = {};
     vector<Term> lhs;
     int rhs = 0;
-
-    InequalityGeq();
 
     InequalityGeq & set_comment(std::string comment)
     {
@@ -225,6 +223,12 @@ class PbModel
 {
     vector<InequalityGeq> constraints;
 
+public:
+    void add_constraint(InequalityGeq constraint)
+    {
+        constraints.push_back(constraint);
+    }
+
     void output_model(std::ostream & ostream)
     {
         std::set<std::string> vars;
@@ -234,7 +238,7 @@ class PbModel
             }
         }
 
-        ostream << "* #variable= " << vars.size() << "#constraint= "
+        ostream << "* #variable= " << vars.size() << " #constraint= "
                 << constraints.size() << std::endl;
 
         for (InequalityGeq & constraint : constraints) {
@@ -261,6 +265,54 @@ std::string c3_var_name(int k, int u, int v, int w)
 {
     return "xc" + std::to_string(k) + "_" + std::to_string(u+1) + "_"
             + std::to_string(v+1) + "_" + std::to_string(w+1);
+}
+
+InequalityGeq mapping_constraint(int p, int target_count, bool direction)
+{
+    auto constraint = InequalityGeq();
+    for (int t=-1; t<target_count; t++) {
+        constraint.add_term({direction ? 1 : -1, false, assignment_var_name(p, t)});
+    }
+    constraint.set_rhs(direction ? 1 : -1);
+    return constraint;
+}
+
+InequalityGeq injectivity_constraint(int t, int pattern_count)
+{
+    auto constraint = InequalityGeq();
+    for (int p=0; p<pattern_count; p++) {
+        constraint.add_term({-1, false, assignment_var_name(p, t)});
+    }
+    constraint.set_rhs(-1);
+    return constraint;
+}
+
+InequalityGeq adjacency_constraint(int p, int q, int t,
+        const Graph & pattern_g, const Graph & target_g)
+{
+    auto constraint = InequalityGeq();
+    bool p_q_adjacent = pattern_g.adjmat[p][q];
+    constraint.add_term({1, true, assignment_var_name(p, t)});
+    for (int i=0; i<target_g.n; i++) {
+        if (i != t && target_g.adjmat[t][i] == p_q_adjacent) {
+            constraint.add_term({1, false, assignment_var_name(q, i)});
+        }
+    }
+    constraint.add_term({1, false, assignment_var_name(q, -1)});
+    constraint.set_rhs(1);
+    return constraint;
+}
+
+InequalityGeq objective_constraint(int pattern_count, int target_count, int goal)
+{
+    auto constraint = InequalityGeq();
+    for (int p=0; p<pattern_count; p++) {
+        for (int t=0; t<target_count; t++) {
+            constraint.add_term({1, false, assignment_var_name(p, t)});
+        }
+    }
+    constraint.set_rhs(goal);
+    return constraint;
 }
 
 /*******************************************************************************
@@ -480,7 +532,6 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         std::ofstream & opb_stream, std::ofstream & proof_stream,
         const vector<int> & vtx_name0, const vector<int> & vtx_name1)
 {
-    opb_stream << "solve " << nodes << std::endl;
     proof_stream << "solve " << nodes << std::endl;
     if (abort_due_to_timeout)
         return;
@@ -590,6 +641,41 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
                 vtx_name0, vtx_name1);
     }
 
+    int impossible_target = incumbent.size() + 1;
+    PbModel pb_model;
+    for (int i=0; i<g0.n; i++) {
+        InequalityGeq constraint = mapping_constraint(i, g1.n, true);
+        constraint.set_comment("Mapping constraint for pattern vertex "
+                + std::to_string(i));
+        pb_model.add_constraint(constraint);
+        pb_model.add_constraint(mapping_constraint(i, g1.n, false));
+    }
+    for (int i=0; i<g1.n; i++) {
+        InequalityGeq constraint = injectivity_constraint(i, g0.n);
+        constraint.set_comment("Injectivity constraint for target vertex "
+                + std::to_string(i));
+        pb_model.add_constraint(constraint);
+    }
+    for (int p=0; p<g0.n; p++) {
+        for (int q=p+1; q<g0.n; q++) {
+            for (int t=0; t<g1.n; t++) {
+                InequalityGeq constraint = adjacency_constraint(p, q, t, g0, g1);
+                if (t == 0) {
+                    constraint.set_comment("Adjacency constraints for pattern edge or non-edge "
+                            + std::to_string(p) + "," + std::to_string(q));
+                }
+                pb_model.add_constraint(constraint);
+            }
+        }
+    }
+    pb_model.add_constraint(objective_constraint(g0.n, g1.n, impossible_target)
+            .set_comment("Objective"));
+    pb_model.output_model(opb_stream);
+
+    vector<VtxPair> current;
+    solve(g0, g1, incumbent, current, domains, left, right, impossible_target, opb_stream, proof_stream,
+                vtx_name0, vtx_name1);
+
     return incumbent;
 }
 
@@ -657,16 +743,17 @@ int main(int argc, char** argv) {
     // input graphs were complemented.
     vector<int> vv0(g0.n);
     std::iota(std::begin(vv0), std::end(vv0), 0);
-    bool g1_dense = sum(g1_deg) > g1.n*(g1.n-1);
-    std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
-        return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
-    });
+    // TODO: reintroduce sorting
+//    bool g1_dense = sum(g1_deg) > g1.n*(g1.n-1);
+//    std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
+//        return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
+//    });
     vector<int> vv1(g1.n);
     std::iota(std::begin(vv1), std::end(vv1), 0);
-    bool g0_dense = sum(g0_deg) > g0.n*(g0.n-1);
-    std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
-        return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
-    });
+//    bool g0_dense = sum(g0_deg) > g0.n*(g0.n-1);
+//    std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
+//        return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
+//    });
 
     struct Graph g0_sorted = induced_subgraph(g0, vv0);
     struct Graph g1_sorted = induced_subgraph(g1, vv1);
