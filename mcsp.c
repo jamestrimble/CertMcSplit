@@ -643,6 +643,8 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
 
     int impossible_target = incumbent.size() + 1;
     PbModel pb_model;
+    pb_model.add_constraint(objective_constraint(g0.n, g1.n, impossible_target)
+            .set_comment("Objective"));
     for (int i=0; i<g0.n; i++) {
         InequalityGeq constraint = mapping_constraint(i, g1.n, true);
         constraint.set_comment("Mapping constraint for pattern vertex "
@@ -668,8 +670,6 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
             }
         }
     }
-    pb_model.add_constraint(objective_constraint(g0.n, g1.n, impossible_target)
-            .set_comment("Objective"));
     pb_model.output_model(opb_stream);
 
     vector<VtxPair> current;
