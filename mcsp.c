@@ -576,6 +576,16 @@ void write_bound_constraint(
     proof_stream << std::endl;
 }
 
+void proof_level_set(int level, std::ostream & proof_stream)
+{
+    proof_stream << "# " << level << std::endl;
+}
+
+void proof_level_wipe(int level, std::ostream & proof_stream)
+{
+    proof_stream << "w " << level << std::endl;
+}
+
 void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         vector<VtxPair> & current, vector<Bidomain> & domains,
         vector<int> & left, vector<int> & right, unsigned int matching_size_goal,
@@ -633,17 +643,23 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 //        if (log_proof)
 //            proof_stream << "* decision " << v << " " << w << std::endl;
         decisions.push_back({-1, false, assignment_var_name(v, w)});
+        if (log_proof)
+            proof_level_set(current.size(), proof_stream);
         solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
                 proof_stream, vtx_name0, vtx_name1,
                 mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
                 decisions, log_proof);
+        current.pop_back();
+        if (log_proof)
+            proof_level_set(current.size(), proof_stream);
         if (log_proof) {
             write_backtracking_constraint(decisions, proof_stream);
             ++last_constraint_num;
         }
 //        if (log_proof)
 //            proof_stream << "* undo decision " << v << " " << w << std::endl;
-        current.pop_back();
+        if (log_proof)
+            proof_level_wipe(current.size() + 1, proof_stream);
         decisions.pop_back();
 //        if (log_proof)
 //            proof_stream << "* decision not" << v << " " << w << std::endl;
@@ -764,6 +780,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
     proof_stream << "pseudo-Boolean proof version 1.0" << std::endl;
     proof_stream << "f " << last_constraint_num << " 0" << std::endl;
     vector<VtxPair> current;
+    proof_level_set(0, proof_stream);
     solve(g0, g1, incumbent, current, domains, left, right, impossible_target, proof_stream,
                 vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
                 last_constraint_num, {}, true);
