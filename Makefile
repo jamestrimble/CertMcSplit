@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -O0 -g -ggdb -fsanitize=address -march=native
+CXXFLAGS := -O3 -g -ggdb -march=native
 all: mcsp
 
 mcsp: mcsp.c graph.c graph.h
