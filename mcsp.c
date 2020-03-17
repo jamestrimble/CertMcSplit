@@ -168,6 +168,102 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
 static struct argp argp = { options, parse_opt, args_doc, doc };
 
 /*******************************************************************************
+                             OPB and proof logging
+*******************************************************************************/
+
+struct Term
+{
+    bool is_negated;
+    int coef;
+    std::string var;
+
+    std::string to_string()
+    {
+        return (is_negated ? "~" : "") + std::to_string(coef) + " " + var;
+    }
+};
+
+struct InequalityGeq
+{
+    std::string comment = {};
+    vector<Term> lhs;
+    int rhs = 0;
+
+    InequalityGeq();
+
+    InequalityGeq & set_comment(std::string comment)
+    {
+        this->comment = comment;
+        return *this;
+    }
+
+    InequalityGeq & set_rhs(int rhs)
+    {
+        this->rhs = rhs;
+        return *this;
+    }
+
+    InequalityGeq & add_term(Term term)
+    {
+        this->lhs.push_back(term);
+        return *this;
+    }
+
+    std::string to_string()
+    {
+        std::string result;
+        for (auto term : lhs) {
+            result += term.to_string() + " ";
+        }
+
+        result += ">= " + std::to_string(rhs) + ";";
+        return result;
+    }
+};
+
+class PbModel
+{
+    vector<InequalityGeq> constraints;
+
+    void output_model(std::ostream & ostream)
+    {
+        std::set<std::string> vars;
+        for (auto & constraint : constraints) {
+            for (auto & term : constraint.lhs) {
+                vars.insert(term.var);
+            }
+        }
+
+        ostream << "* #variable= " << vars.size() << "#constraint= "
+                << constraints.size() << std::endl;
+
+        for (InequalityGeq & constraint : constraints) {
+            if (!constraint.comment.empty()) {
+                ostream << "* " << constraint.comment << std::endl;
+            }
+            ostream << constraint.to_string() << std::endl;
+        }
+    }
+};
+
+std::string assignment_var_name(int p, int t)
+{
+    return "x" + std::to_string(p+1) + "_" + std::to_string(t+1);
+}
+
+std::string c2_var_name(int k, int u, int w)
+{
+    return "xc" + std::to_string(k) + "_" + std::to_string(u+1) + "_"
+            + std::to_string(w+1);
+}
+
+std::string c3_var_name(int k, int u, int v, int w)
+{
+    return "xc" + std::to_string(k) + "_" + std::to_string(u+1) + "_"
+            + std::to_string(v+1) + "_" + std::to_string(w+1);
+}
+
+/*******************************************************************************
                                      Stats
 *******************************************************************************/
 
