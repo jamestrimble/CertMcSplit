@@ -896,7 +896,9 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 
 vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
             const vector<int> & vtx_name0, const vector<int> & vtx_name1,
-            int last_constraint_num) {
+            int last_constraint_num,
+            const vector<int> & mapping_constraint_nums,
+            const vector<int> & injectivity_constraint_nums) {
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
 
@@ -936,9 +938,6 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
     std::ofstream proof_stream(arguments.proof_filename);
     int unused = 0;
     if (arguments.decision_size != -1) {
-        vector<int> mapping_constraint_nums(g0.n);
-        vector<int> injectivity_constraint_nums(g1.n);
-
         proof_stream << "pseudo-Boolean proof version 1.0" << std::endl;
         proof_stream << "f " << last_constraint_num << " 0" << std::endl;
         vector<VtxPair> current;
@@ -1026,6 +1025,8 @@ int main(int argc, char** argv) {
 
     auto start = std::chrono::steady_clock::now();
 
+    vector<int> mapping_constraint_nums(g0.n);
+    vector<int> injectivity_constraint_nums(g1.n);
     int last_constraint_num = 0;
     if (arguments.decision_size != -1) {
         std::ofstream opb_stream(arguments.opb_filename);
@@ -1055,7 +1056,8 @@ int main(int argc, char** argv) {
     struct Graph g0_sorted = induced_subgraph(g0, vv0);
     struct Graph g1_sorted = induced_subgraph(g1, vv1);
 
-    vector<VtxPair> solution = mcs(g0_sorted, g1_sorted, vv0, vv1, last_constraint_num);
+    vector<VtxPair> solution = mcs(g0_sorted, g1_sorted, vv0, vv1, last_constraint_num,
+            mapping_constraint_nums, injectivity_constraint_nums);
 
     // Convert to indices from original, unsorted graphs
     for (auto& vtx_pair : solution) {
