@@ -372,11 +372,15 @@ InequalityGeq connectedness_inductive_case_a(int k, int u, int v, int w, const G
     return constraint_A_implies_B_and_C(term1, term2, term3, part);
 }
 
-InequalityGeq connectedness_inductive_case_b_part_1(int k, int u, int w, const Graph & pattern_g)
+InequalityGeq connectedness_inductive_case_b_part_1(int k, int u, int w, const Graph & pattern_g,
+        bool exclude_u_and_w)
 {
     InequalityGeq constraint {};
     constraint.add_term({1, true, c2_var_name(k, u, w)});
     for (int v=0; v<pattern_g.n; v++) {
+        if (exclude_u_and_w && (u==v || w==v)) {
+            continue;
+        }
         constraint.add_term({1, false, c3_var_name(k, u, v, w)});
     }
     constraint.set_rhs(1);
@@ -486,7 +490,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
                         pb_model.add_constraint(constraint);
                     }
                 }
-                InequalityGeq constraint = connectedness_inductive_case_b_part_1(k, u, w, g0);
+                InequalityGeq constraint = connectedness_inductive_case_b_part_1(k, u, w, g0, false);
                 constraint.set_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
                         + " w=" + std::to_string(w));
@@ -563,13 +567,16 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
                         pb_model.add_constraint(constraint);
                     }
                 }
-                InequalityGeq constraint = connectedness_inductive_case_b_part_1(k, u, w, g0);
+                InequalityGeq constraint = connectedness_inductive_case_b_part_1(k, u, w, g0, true);
                 constraint.add_term({1, false, c2_var_name(k-1, u, w)});
                 constraint.set_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
                         + " w=" + std::to_string(w));
                 pb_model.add_constraint(constraint);
                 for (int v=0; v<g0.n; v++) {
+                    if (u == v || w == v) {
+                        continue;
+                    }
                     InequalityGeq constraint = connectedness_inductive_case_b_part_2(k, u, v, w, g0);
                     pb_model.add_constraint(constraint);
                 }
@@ -577,6 +584,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
                 extra_constraint.add_term({1, false, c2_var_name(k, u, w)});
                 extra_constraint.add_term({1, true, c2_var_name(k-1, u, w)});
                 extra_constraint.set_rhs(1);
+                pb_model.add_constraint(extra_constraint);
             }
         }
         ++k;
