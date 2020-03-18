@@ -894,7 +894,9 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
     decisions.resize(decisions_len_at_start_of_solve);
 }
 
-vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_name0, const vector<int> & vtx_name1) {
+vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
+            const vector<int> & vtx_name0, const vector<int> & vtx_name1,
+            int last_constraint_num) {
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
 
@@ -936,15 +938,6 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
     if (arguments.decision_size != -1) {
         vector<int> mapping_constraint_nums(g0.n);
         vector<int> injectivity_constraint_nums(g1.n);
-
-        int last_constraint_num;
-        {
-            std::ofstream opb_stream(arguments.opb_filename);
-            auto pb_model = build_pb_model(g0, g1, arguments.decision_size,
-                    mapping_constraint_nums, injectivity_constraint_nums);
-            pb_model.output_model(opb_stream);
-            last_constraint_num = pb_model.last_constraint_number();
-        }
 
         proof_stream << "pseudo-Boolean proof version 1.0" << std::endl;
         proof_stream << "f " << last_constraint_num << " 0" << std::endl;
@@ -1033,15 +1026,18 @@ int main(int argc, char** argv) {
 
     auto start = std::chrono::steady_clock::now();
 
+    int last_constraint_num = 0;
+    if (arguments.decision_size != -1) {
+        std::ofstream opb_stream(arguments.opb_filename);
+        auto pb_model = build_pb_model(g0, g1, arguments.decision_size,
+                mapping_constraint_nums, injectivity_constraint_nums);
+        pb_model.output_model(opb_stream);
+        last_constraint_num = pb_model.last_constraint_number();
+    }
+
     vector<int> g0_deg = calculate_degrees(g0);
     vector<int> g1_deg = calculate_degrees(g1);
 
-    // As implemented here, g1_dense and g0_dense are false for all instances
-    // in the Experimental Evaluation section of the paper.  Thus,
-    // we always sort the vertices in descending order of degree (or total degree,
-    // in the case of directed graphs.  Improvements could be made here: it would
-    // be nice if the program explored exactly the same search tree if both
-    // input graphs were complemented.
     vector<int> vv0(g0.n);
     std::iota(std::begin(vv0), std::end(vv0), 0);
     // TODO: reintroduce sorting
@@ -1059,7 +1055,7 @@ int main(int argc, char** argv) {
     struct Graph g0_sorted = induced_subgraph(g0, vv0);
     struct Graph g1_sorted = induced_subgraph(g1, vv1);
 
-    vector<VtxPair> solution = mcs(g0_sorted, g1_sorted, vv0, vv1);
+    vector<VtxPair> solution = mcs(g0_sorted, g1_sorted, vv0, vv1, last_constraint_num);
 
     // Convert to indices from original, unsorted graphs
     for (auto& vtx_pair : solution) {
