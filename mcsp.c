@@ -673,8 +673,10 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         std::ofstream & proof_stream,
         const vector<int> & vtx_name0, const vector<int> & vtx_name1,
         const vector<int> & mapping_constraint_nums, const vector<int> & injectivity_constraint_nums,
-        int & last_constraint_num, vector<Term> decisions, bool log_proof)
+        int & last_constraint_num, vector<Term> & decisions, bool log_proof)
 {
+    int decisions_len_at_start_of_solve = decisions.size();
+
     if (abort_due_to_timeout)
         return;
 
@@ -723,7 +725,8 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         current.push_back(VtxPair(v, w));
 //        if (log_proof)
 //            proof_stream << "* decision " << v << " " << w << std::endl;
-        decisions.push_back({-1, false, assignment_var_name(v, w)});
+        if (log_proof)
+            decisions.push_back({-1, false, assignment_var_name(v, w)});
         if (log_proof)
             proof_level_set(current.size(), proof_stream);
         solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
@@ -741,15 +744,18 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 //            proof_stream << "* undo decision " << v << " " << w << std::endl;
         if (log_proof)
             proof_level_wipe(current.size() + 1, proof_stream);
-        decisions.pop_back();
+        if (log_proof)
+            decisions.pop_back();
 //        if (log_proof)
 //            proof_stream << "* decision not" << v << " " << w << std::endl;
-        decisions.push_back({-1, true, assignment_var_name(v, w)});
+        if (log_proof)
+            decisions.push_back({-1, true, assignment_var_name(v, w)});
     }
     bd.right_len++;
     if (bd.left_len == 0)
         remove_bidomain(domains, bd_idx);
-    decisions.push_back({-1, false, assignment_var_name(v, -1)});
+    if (log_proof)
+        decisions.push_back({-1, false, assignment_var_name(v, -1)});
     solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal,
             proof_stream, vtx_name0, vtx_name1,
             mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
@@ -758,6 +764,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 //        write_backtracking_constraint(decisions, proof_stream);
 //        ++last_constraint_num;
 //    }
+    decisions.resize(decisions_len_at_start_of_solve);
 }
 
 vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_name0, const vector<int> & vtx_name1) {
@@ -795,6 +802,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
     }
 
     vector<VtxPair> incumbent;
+    vector<Term> decisions;
 
     std::ofstream opb_stream(arguments.opb_filename);
     std::ofstream proof_stream(arguments.proof_filename);
@@ -807,7 +815,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
             auto domains_copy = domains;
             vector<VtxPair> current;
             solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal, proof_stream,
-                    vtx_name0, vtx_name1, {}, {}, unused, {}, false);
+                    vtx_name0, vtx_name1, {}, {}, unused, decisions, false);
             if (incumbent.size() == goal || abort_due_to_timeout) break;
             if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
         }
@@ -816,7 +824,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
         vector<VtxPair> current;
         auto domains_copy = domains;
         solve(g0, g1, incumbent, current, domains_copy, left, right, 1, proof_stream,
-                vtx_name0, vtx_name1, {}, {}, unused, {}, false);
+                vtx_name0, vtx_name1, {}, {}, unused, decisions, false);
     }
 
     vector<int> mapping_constraint_nums(g0.n);
@@ -947,7 +955,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
     proof_level_set(0, proof_stream);
     solve(g0, g1, incumbent, current, domains, left, right, impossible_target, proof_stream,
                 vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
-                last_constraint_num, {}, true);
+                last_constraint_num, decisions, true);
     proof_stream << "u >= 1;" << std::endl;
     ++last_constraint_num;
     proof_stream << "c " << last_constraint_num << " 0" << std::endl;
