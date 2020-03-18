@@ -360,16 +360,23 @@ InequalityGeq connectedness_inductive_case_a(int k, int u, int v, int w, const G
     return constraint_A_implies_B_and_C(term1, term2, term3, part);
 }
 
-InequalityGeq connectedness_inductive_case_b(int k, int u, int w, const Graph & pattern_g,
-        int part)
+InequalityGeq connectedness_inductive_case_b_part_1(int k, int u, int w, const Graph & pattern_g)
 {
-    int coef = part ? 1 : -1;
     InequalityGeq constraint {};
-    constraint.add_term({coef, true, c2_var_name(k, u, w)});
+    constraint.add_term({1, true, c2_var_name(k, u, w)});
     for (int v=0; v<pattern_g.n; v++) {
-        constraint.add_term({coef, false, c3_var_name(k, u, v, w)});
+        constraint.add_term({1, false, c3_var_name(k, u, v, w)});
     }
-    constraint.set_rhs(coef);
+    constraint.set_rhs(1);
+    return constraint;
+}
+
+InequalityGeq connectedness_inductive_case_b_part_2(int k, int u, int v, int w, const Graph & pattern_g)
+{
+    InequalityGeq constraint {};
+    constraint.add_term({1, false, c2_var_name(k, u, w)});
+    constraint.add_term({1, true, c3_var_name(k, u, v, w)});
+    constraint.set_rhs(1);
     return constraint;
 }
 
@@ -467,13 +474,13 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
                         pb_model.add_constraint(constraint);
                     }
                 }
-                for (int part=1; part<=2; part++) {
-                    InequalityGeq constraint = connectedness_inductive_case_b(k, u, w, g0, part);
-                    if (part == 1) {
-                        constraint.set_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
-                                + " u=" + std::to_string(u)
-                                + " w=" + std::to_string(w));
-                    }
+                InequalityGeq constraint = connectedness_inductive_case_b_part_1(k, u, w, g0);
+                constraint.set_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
+                        + " u=" + std::to_string(u)
+                        + " w=" + std::to_string(w));
+                pb_model.add_constraint(constraint);
+                for (int v=0; v<g0.n; v++) {
+                    InequalityGeq constraint = connectedness_inductive_case_b_part_2(k, u, v, w, g0);
                     pb_model.add_constraint(constraint);
                 }
             }
