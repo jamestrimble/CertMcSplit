@@ -47,6 +47,8 @@ static struct argp_option options[] = {
     {"labelled", 'a', 0, 0, "Use edge and vertex labels"},
     {"vertex-labelled-only", 'x', 0, 0, "Use vertex labels, but not edge labels"},
     {"big-first", 'b', 0, 0, "First try to find an induced subgraph isomorphism, then decrement the target size"},
+    {"count-solutions", 'C', 0, 0, "(For the decision problem only) count solutions"},
+    {"log-proof", 'L', 0, 0, "Do proof logging"},
     {"decision", 'D', "size", 0, "Solve the decision problem"},
     {"timeout", 't', "timeout", 0, "Specify a timeout (seconds)"},
     { 0 }
@@ -62,6 +64,8 @@ static struct {
     bool edge_labelled;
     bool vertex_labelled;
     bool big_first;
+    bool count_solutions;
+    bool log_proof;
     Heuristic heuristic;
     char *filename1;
     char *filename2;
@@ -84,6 +88,8 @@ void set_default_arguments() {
     arguments.edge_labelled = false;
     arguments.vertex_labelled = false;
     arguments.big_first = false;
+    arguments.count_solutions = false;
+    arguments.log_proof = false;
     arguments.filename1 = NULL;
     arguments.filename2 = NULL;
     arguments.opb_filename = NULL;
@@ -134,6 +140,12 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'b':
             arguments.big_first = true;
+            break;
+        case 'C':
+            arguments.count_solutions = true;
+            break;
+        case 'L':
+            arguments.log_proof = true;
             break;
         case 'D':
             arguments.decision_size = std::stoi(arg);
@@ -635,6 +647,7 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
 *******************************************************************************/
 
 unsigned long long nodes{ 0 };
+unsigned long long solution_count{ 0 };
 
 /*******************************************************************************
                                  MCS functions
@@ -908,15 +921,21 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         std::ofstream & proof_stream,
         const vector<int> & vtx_name0, const vector<int> & vtx_name1,
         const vector<int> & mapping_constraint_nums, const vector<int> & injectivity_constraint_nums,
-        int & last_constraint_num, vector<Term> & decisions, bool log_proof)
+        int & last_constraint_num, vector<Term> & decisions)
 {
     int decisions_len_at_start_of_solve = decisions.size();
 
     if (abort_due_to_timeout)
         return;
 
-    if (arguments.verbose) show(current, domains, left, right);
+    if (arguments.verbose) {
+        show(current, domains, left, right);
+    }
     nodes++;
+
+    if (arguments.count_solutions && current.size() == matching_size_goal) {
+        ++solution_count;
+    }
 
     if (current.size() > incumbent.size()) {
         incumbent = current;
@@ -924,8 +943,8 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
     }
 
     unsigned int bound = current.size() + calc_bound(domains);
-    if (bound <= incumbent.size() || bound < matching_size_goal) {
-        if (log_proof && !domains.empty()) {
+    if ((!arguments.count_solutions && bound <= incumbent.size()) || bound < matching_size_goal) {
+        if (arguments.log_proof && !domains.empty()) {
             write_bound_constraint(domains, left, right, mapping_constraint_nums,
                     injectivity_constraint_nums, proof_stream, vtx_name0, vtx_name1);
             ++last_constraint_num;
@@ -960,44 +979,44 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         current.push_back(VtxPair(v, w));
 //        if (log_proof)
 //            proof_stream << "* decision " << v << " " << w << std::endl;
-        if (log_proof)
+        if (arguments.log_proof)
             decisions.push_back({-1, false, assignment_var_name(vtx_name0[v], vtx_name1[w])});
-        if (log_proof)
+        if (arguments.log_proof)
             proof_level_set(current.size(), proof_stream);
         solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
                 proof_stream, vtx_name0, vtx_name1,
                 mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
-                decisions, log_proof);
+                decisions);
         current.pop_back();
-        if (log_proof)
+        if (arguments.log_proof)
             proof_level_set(current.size(), proof_stream);
-        if (log_proof) {
+        if (arguments.log_proof) {
             write_backtracking_constraint(decisions, proof_stream);
             ++last_constraint_num;
         }
-//        if (log_proof)
+//        if (arguments.log_proof)
 //            proof_stream << "* undo decision " << v << " " << w << std::endl;
-        if (log_proof)
+        if (arguments.log_proof)
             proof_level_wipe(current.size() + 1, proof_stream);
-        if (log_proof)
+        if (arguments.log_proof)
             decisions.pop_back();
-//        if (log_proof)
+//        if (arguments.log_proof)
 //            proof_stream << "* decision not" << v << " " << w << std::endl;
-        if (log_proof)
+        if (arguments.log_proof)
             decisions.push_back({-1, true, assignment_var_name(vtx_name0[v], vtx_name1[w])});
     }
     bd.right_len++;
     if (bd.left_len == 0)
         remove_bidomain(domains, bd_idx);
-    if (log_proof) {
+    if (arguments.log_proof) {
         decisions.resize(decisions_len_at_start_of_solve);
         decisions.push_back({-1, false, assignment_var_name(vtx_name0[v], -1)});
     }
     solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal,
             proof_stream, vtx_name0, vtx_name1,
             mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
-            decisions, log_proof);
-//    if (log_proof) {
+            decisions);
+//    if (arguments.log_proof) {
 //        write_backtracking_constraint(decisions, proof_stream);
 //        ++last_constraint_num;
 //    }
@@ -1054,7 +1073,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
         proof_level_set(0, proof_stream);
         solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, proof_stream,
                     vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
-                    last_constraint_num, decisions, true);
+                    last_constraint_num, decisions);
         if (int(incumbent.size()) < arguments.decision_size) {
             proof_stream << "u >= 1;" << std::endl;
             ++last_constraint_num;
@@ -1068,7 +1087,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
             auto domains_copy = domains;
             vector<VtxPair> current;
             solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal, proof_stream,
-                    vtx_name0, vtx_name1, {}, {}, unused, decisions, false);
+                    vtx_name0, vtx_name1, {}, {}, unused, decisions);
             if (incumbent.size() == goal || abort_due_to_timeout) break;
             if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
         }
@@ -1076,7 +1095,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
         vector<VtxPair> current;
         auto domains_copy = domains;
         solve(g0, g1, incumbent, current, domains_copy, left, right, 1, proof_stream,
-                vtx_name0, vtx_name1, {}, {}, unused, decisions, false);
+                vtx_name0, vtx_name1, {}, {}, unused, decisions);
     }
 
     return incumbent;
@@ -1198,6 +1217,7 @@ int main(int argc, char** argv) {
                 cout << "(" << solution[j].v << " -> " << solution[j].w << ") ";
     cout << std::endl;
 
+    cout << "Solutions counted:          " << solution_count << endl;
     cout << "Nodes:                      " << nodes << endl;
     cout << "CPU time (ms):              " << time_elapsed << endl;
     if (aborted)
