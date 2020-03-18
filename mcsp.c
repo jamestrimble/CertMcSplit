@@ -474,7 +474,6 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
         }
 
         // inductive case
-        // TODO: make this right. just copied from base case at moment. need to handle u==w correctly
         int k = 1;
         while ((1 << k) + 1 < g0.n) {
             for (int u=0; u<g0.n; u++) {
@@ -757,17 +756,23 @@ void write_bound_constraint(
         vector<int> & right,
         const vector<int> & mapping_constraint_nums,
         const vector<int> & injectivity_constraint_nums,
-        std::ostream & proof_stream)
+        std::ostream & proof_stream,
+        const vector<int> & vtx_name0,
+        const vector<int> & vtx_name1)
 {
     vector<int> constraint_nums;
     for (const Bidomain &bd : domains) {
         if (bd.left_len <= bd.right_len) {
             for (int i=0; i<bd.left_len; i++) {
-                constraint_nums.push_back(mapping_constraint_nums[left[bd.l+i]]);
+                int v_in_sorted_graph = left[bd.l+i];
+                int v_in_original_graph = vtx_name0[v_in_sorted_graph];
+                constraint_nums.push_back(mapping_constraint_nums[v_in_original_graph]);
             }
         } else {
             for (int i=0; i<bd.right_len; i++) {
-                constraint_nums.push_back(injectivity_constraint_nums[right[bd.r+i]]);
+                int v_in_sorted_graph = right[bd.r+i];
+                int v_in_original_graph = vtx_name1[v_in_sorted_graph];
+                constraint_nums.push_back(injectivity_constraint_nums[v_in_original_graph]);
             }
         }
     }
@@ -819,7 +824,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
     if (bound <= incumbent.size() || bound < matching_size_goal) {
         if (log_proof && !domains.empty()) {
             write_bound_constraint(domains, left, right, mapping_constraint_nums,
-                    injectivity_constraint_nums, proof_stream);
+                    injectivity_constraint_nums, proof_stream, vtx_name0, vtx_name1);
             ++last_constraint_num;
         }
         return;
@@ -853,7 +858,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 //        if (log_proof)
 //            proof_stream << "* decision " << v << " " << w << std::endl;
         if (log_proof)
-            decisions.push_back({-1, false, assignment_var_name(v, w)});
+            decisions.push_back({-1, false, assignment_var_name(vtx_name0[v], vtx_name1[w])});
         if (log_proof)
             proof_level_set(current.size(), proof_stream);
         solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
@@ -876,13 +881,13 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 //        if (log_proof)
 //            proof_stream << "* decision not" << v << " " << w << std::endl;
         if (log_proof)
-            decisions.push_back({-1, true, assignment_var_name(v, w)});
+            decisions.push_back({-1, true, assignment_var_name(vtx_name0[v], vtx_name1[w])});
     }
     bd.right_len++;
     if (bd.left_len == 0)
         remove_bidomain(domains, bd_idx);
     if (log_proof)
-        decisions.push_back({-1, false, assignment_var_name(v, -1)});
+        decisions.push_back({-1, false, assignment_var_name(vtx_name0[v], -1)});
     solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal,
             proof_stream, vtx_name0, vtx_name1,
             mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
@@ -1041,17 +1046,17 @@ int main(int argc, char** argv) {
 
     vector<int> vv0(g0.n);
     std::iota(std::begin(vv0), std::end(vv0), 0);
-    // TODO: reintroduce sorting
-//    bool g1_dense = sum(g1_deg) > g1.n*(g1.n-1);
-//    std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
-//        return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
-//    });
+
+    bool g1_dense = sum(g1_deg) > g1.n*(g1.n-1);
+    std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
+        return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
+    });
     vector<int> vv1(g1.n);
     std::iota(std::begin(vv1), std::end(vv1), 0);
-//    bool g0_dense = sum(g0_deg) > g0.n*(g0.n-1);
-//    std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
-//        return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
-//    });
+    bool g0_dense = sum(g0_deg) > g0.n*(g0.n-1);
+    std::stable_sort(std::begin(vv1), std::end(vv1), [&](int a, int b) {
+        return g0_dense ? (g1_deg[a]<g1_deg[b]) : (g1_deg[a]>g1_deg[b]);
+    });
 
     struct Graph g0_sorted = induced_subgraph(g0, vv0);
     struct Graph g1_sorted = induced_subgraph(g1, vv1);
