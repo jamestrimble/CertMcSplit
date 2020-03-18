@@ -886,8 +886,10 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
     bd.right_len++;
     if (bd.left_len == 0)
         remove_bidomain(domains, bd_idx);
-    if (log_proof)
+    if (log_proof) {
+        decisions.resize(decisions_len_at_start_of_solve);
         decisions.push_back({-1, false, assignment_var_name(vtx_name0[v], -1)});
+    }
     solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal,
             proof_stream, vtx_name0, vtx_name1,
             mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
