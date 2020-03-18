@@ -47,6 +47,7 @@ static struct argp_option options[] = {
     {"labelled", 'a', 0, 0, "Use edge and vertex labels"},
     {"vertex-labelled-only", 'x', 0, 0, "Use vertex labels, but not edge labels"},
     {"big-first", 'b', 0, 0, "First try to find an induced subgraph isomorphism, then decrement the target size"},
+    {"decision", 'D', "size", 0, "Solve the decision problem"},
     {"timeout", 't', "timeout", 0, "Specify a timeout (seconds)"},
     { 0 }
 };
@@ -67,6 +68,7 @@ static struct {
     char *opb_filename;
     char *proof_filename;
     int timeout;
+    int decision_size;
     int arg_num;
 } arguments;
 
@@ -87,6 +89,7 @@ void set_default_arguments() {
     arguments.opb_filename = NULL;
     arguments.proof_filename = NULL;
     arguments.timeout = 0;
+    arguments.decision_size = -1;
     arguments.arg_num = 0;
 }
 
@@ -131,6 +134,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'b':
             arguments.big_first = true;
+            break;
+        case 'D':
+            arguments.decision_size = std::stoi(arg);
             break;
         case 't':
             arguments.timeout = std::stoi(arg);
@@ -925,10 +931,34 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
     vector<VtxPair> incumbent;
     vector<Term> decisions;
 
-    std::ofstream opb_stream(arguments.opb_filename);
     std::ofstream proof_stream(arguments.proof_filename);
     int unused = 0;
-    if (arguments.big_first) {
+    if (arguments.decision_size != -1) {
+        vector<int> mapping_constraint_nums(g0.n);
+        vector<int> injectivity_constraint_nums(g1.n);
+
+        int last_constraint_num;
+        {
+            std::ofstream opb_stream(arguments.opb_filename);
+            auto pb_model = build_pb_model(g0, g1, arguments.decision_size,
+                    mapping_constraint_nums, injectivity_constraint_nums);
+            pb_model.output_model(opb_stream);
+            last_constraint_num = pb_model.last_constraint_number();
+        }
+
+        proof_stream << "pseudo-Boolean proof version 1.0" << std::endl;
+        proof_stream << "f " << last_constraint_num << " 0" << std::endl;
+        vector<VtxPair> current;
+        proof_level_set(0, proof_stream);
+        solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, proof_stream,
+                    vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
+                    last_constraint_num, decisions, true);
+        if (int(incumbent.size()) < arguments.decision_size) {
+            proof_stream << "u >= 1;" << std::endl;
+            ++last_constraint_num;
+            proof_stream << "c " << last_constraint_num << " 0" << std::endl;
+        }
+    } else if (arguments.big_first) {
         for (int k=0; k<g0.n; k++) {
             unsigned int goal = g0.n - k;
             auto left_copy = left;
@@ -940,33 +970,12 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1, const vector<int> & vtx_
             if (incumbent.size() == goal || abort_due_to_timeout) break;
             if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
         }
-
     } else {
         vector<VtxPair> current;
         auto domains_copy = domains;
         solve(g0, g1, incumbent, current, domains_copy, left, right, 1, proof_stream,
                 vtx_name0, vtx_name1, {}, {}, unused, decisions, false);
     }
-
-    vector<int> mapping_constraint_nums(g0.n);
-    vector<int> injectivity_constraint_nums(g1.n);
-
-    int impossible_target = incumbent.size() + 1;
-    auto pb_model = build_pb_model(g0, g1, impossible_target,
-            mapping_constraint_nums, injectivity_constraint_nums);
-    pb_model.output_model(opb_stream);
-
-    int last_constraint_num = pb_model.last_constraint_number();
-    proof_stream << "pseudo-Boolean proof version 1.0" << std::endl;
-    proof_stream << "f " << last_constraint_num << " 0" << std::endl;
-    vector<VtxPair> current;
-    proof_level_set(0, proof_stream);
-    solve(g0, g1, incumbent, current, domains, left, right, impossible_target, proof_stream,
-                vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
-                last_constraint_num, decisions, true);
-    proof_stream << "u >= 1;" << std::endl;
-    ++last_constraint_num;
-    proof_stream << "c " << last_constraint_num << " 0" << std::endl;
 
     return incumbent;
 }
