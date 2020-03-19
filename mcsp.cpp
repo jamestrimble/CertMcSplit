@@ -17,6 +17,9 @@
 
 #include <argp.h>
 
+// FIXME: make this non-global!
+int number_of_most_recent_objective_constraint = 1;
+
 using std::vector;
 using std::cout;
 using std::endl;
@@ -235,11 +238,17 @@ struct InequalityGeq
 class PbModel
 {
     vector<InequalityGeq> constraints;
+    vector<Term> objective;  // no objective if this is empty
 
 public:
     int last_constraint_number()
     {
         return constraints.size();
+    }
+
+    void add_objective_term(Term term)
+    {
+        objective.push_back(term);
     }
 
     void add_constraint(InequalityGeq constraint)
@@ -258,6 +267,14 @@ public:
 
         ostream << "* #variable= " << vars.size() << " #constraint= "
                 << constraints.size() << std::endl;
+
+        if (!objective.empty()) {
+            ostream << "min: ";
+            for (auto term : objective) {
+                ostream << term.to_string() << " ";
+            }
+            ostream << ";" << std::endl;
+        }
 
         for (InequalityGeq & constraint : constraints) {
             if (!constraint.comment.empty()) {
@@ -721,8 +738,17 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
         vector<int> & mapping_constraint_nums, vector<int> & injectivity_constraint_nums)
 {
     PbModel pb_model;
-    pb_model.add_constraint(objective_constraint(g0.n, g1.n, target_subgraph_size)
-            .set_comment("Objective"));
+
+    if (target_subgraph_size == -1) {
+        // optimisation version
+        for (int p=0; p<g0.n; p++) {
+            pb_model.add_objective_term({1, false, assignment_var_name(p, -1)});
+        }
+    } else {
+        pb_model.add_constraint(objective_constraint(g0.n, g1.n, target_subgraph_size)
+                .set_comment("Objective"));
+    }
+
     for (int i=0; i<g0.n; i++) {
         InequalityGeq constraint = mapping_constraint(i, g1.n, true);
         constraint.set_comment("Mapping constraint for pattern vertex "
@@ -1033,7 +1059,7 @@ void write_bound_constraint(
         }
         first = false;
     }
-    proof_stream << "1 + 0";
+    proof_stream << number_of_most_recent_objective_constraint << " + 0";
     proof_stream << std::endl;
     ++last_constraint_num;
 }
@@ -1043,10 +1069,11 @@ void write_solution(std::ostream & proof_stream,
         const Graph & pattern_g,
         const vector<int> & vtx_name0,
         const vector<int> & vtx_name1,
-        int & last_constraint_num)
+        int & last_constraint_num,
+        char prefix)
 {
     std::vector<bool> pattern_v_used(pattern_g.n);
-    proof_stream << "v";
+    proof_stream << prefix;
     for (auto assignment : current) {
         int v = vtx_name0[assignment.v];
         int w = vtx_name1[assignment.w];
@@ -1056,10 +1083,15 @@ void write_solution(std::ostream & proof_stream,
     for (int v=0; v<pattern_g.n; v++) {
         if (!pattern_v_used[v]) {
             proof_stream << " " << assignment_var_name(v, -1);
+        } else if (prefix == 'o') {
+            proof_stream << " ~" << assignment_var_name(v, -1);
         }
     }
     proof_stream << std::endl;
     ++last_constraint_num;
+    if (prefix == 'o')
+        number_of_most_recent_objective_constraint = last_constraint_num;
+    std::cout << "!" << number_of_most_recent_objective_constraint << std::endl;
 }
 
 void proof_level_set(int level, std::ostream & proof_stream)
@@ -1093,13 +1125,10 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
     if (current.size() > incumbent.size()) {
         incumbent = current;
         if (!arguments.quiet) cout << "Incumbent size: " << incumbent.size() << endl;
-    }
-
-    if (arguments.count_solutions && current.size() == matching_size_goal) {
-        ++solution_count;
-        if (proof_stream) {
-            write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num);
-            return;
+        if (arguments.decision_size==-1 && proof_stream) {
+            proof_level_set(0, proof_stream.value());
+            write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num, 'o');
+            proof_level_set(current.size(), proof_stream.value());
         }
     }
 
@@ -1144,13 +1173,19 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
             decisions.push_back({-1, false, assignment_var_name(vtx_name0[v], vtx_name1[w])});
         if (proof_stream)
             proof_level_set(current.size(), proof_stream.value());
+
+        if (arguments.count_solutions && current.size() >= matching_size_goal) {
+            ++solution_count;
+            if (proof_stream) {
+                write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num, 'v');
+            }
+        }
+
         solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
                 proof_stream, vtx_name0, vtx_name1,
                 mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
                 decisions);
-        if (arguments.decision_size != -1 && !arguments.count_solutions && incumbent.size()==matching_size_goal) {
-            return;
-        }
+
         current.pop_back();
         if (proof_stream)
             proof_level_set(current.size(), proof_stream.value());
@@ -1228,31 +1263,32 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
     vector<VtxPair> incumbent;
     vector<Term> decisions;
 
-    int junk = 0;
     if (arguments.proof_filename && !arguments.opb_filename) {
         std::cerr << "If -p options is used, -o option must be used also." << std::endl;
         exit(1);
     }
+
     auto proof_stream = arguments.proof_filename ?
             std::optional<std::ofstream> {arguments.proof_filename} :
             std::nullopt;
+    if (proof_stream) {
+        *proof_stream << "pseudo-Boolean proof version 1.0" << std::endl;
+        *proof_stream << "f " << last_constraint_num << " 0" << std::endl;
+        proof_level_set(0, *proof_stream);
+    }
+
+    vector<VtxPair> current;
+
     if (arguments.decision_size != -1) {
-        if (proof_stream) {
-            *proof_stream << "pseudo-Boolean proof version 1.0" << std::endl;
-            *proof_stream << "f " << last_constraint_num << " 0" << std::endl;
-        }
-        vector<VtxPair> current;
-        if (proof_stream) {
-            proof_level_set(0, *proof_stream);
+        if (arguments.count_solutions && 0 == arguments.decision_size) {
+            ++solution_count;
+            if (proof_stream) {
+                write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num, 'v');
+            }
         }
         solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, proof_stream,
                     vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
                     last_constraint_num, decisions);
-        if (proof_stream && (arguments.count_solutions || int(incumbent.size()) < arguments.decision_size)) {
-            *proof_stream << "u >= 1;" << std::endl;
-            ++last_constraint_num;
-            *proof_stream << "c " << last_constraint_num << " 0" << std::endl;
-        }
     } else if (arguments.big_first) {
         for (int k=0; k<g0.n; k++) {
             unsigned int goal = g0.n - k;
@@ -1261,15 +1297,19 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
             auto domains_copy = domains;
             vector<VtxPair> current;
             solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal, proof_stream,
-                    vtx_name0, vtx_name1, {}, {}, junk, decisions);
+                    vtx_name0, vtx_name1, {}, {}, last_constraint_num, decisions);
             if (incumbent.size() == goal || abort_due_to_timeout) break;
             if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
         }
     } else {
-        vector<VtxPair> current;
         auto domains_copy = domains;
         solve(g0, g1, incumbent, current, domains_copy, left, right, 1, proof_stream,
-                vtx_name0, vtx_name1, {}, {}, junk, decisions);
+                vtx_name0, vtx_name1, mapping_constraint_nums, mapping_constraint_nums, last_constraint_num, decisions);
+    }
+    if (proof_stream && (arguments.count_solutions || arguments.decision_size == -1 || int(incumbent.size()) < arguments.decision_size)) {
+        *proof_stream << "u >= 1;" << std::endl;
+        ++last_constraint_num;
+        *proof_stream << "c " << last_constraint_num << " 0" << std::endl;
     }
 
     return incumbent;
@@ -1294,6 +1334,11 @@ int sum(const vector<int> & vec) {
 int main(int argc, char** argv) {
     set_default_arguments();
     argp_parse(&argp, argc, argv, 0, 0, 0);
+
+    if (arguments.count_solutions && arguments.decision_size == -1) {
+        std::cerr << "Solution counting is only supported for the decision problem" << std::endl;
+        exit(1);
+    }
 
     char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : 'B';
     struct Graph g0 = readGraph(arguments.filename1, format, arguments.directed,
@@ -1332,8 +1377,8 @@ int main(int argc, char** argv) {
     vector<int> injectivity_constraint_nums(g1.n);
     int last_constraint_num = 0;
     if (arguments.opb_filename) {
-        if (arguments.decision_size == -1) {
-            std::cerr << "OPB output is currently only supported for the decision problem." << std::endl;
+        if (arguments.big_first) {
+            std::cerr << "OPB output is currently only supported for the decision problem and BnB." << std::endl;
             exit(1);
         }
         std::ofstream opb_stream(arguments.opb_filename);
@@ -1341,6 +1386,7 @@ int main(int argc, char** argv) {
                 mapping_constraint_nums, injectivity_constraint_nums);
         pb_model.output_model(opb_stream);
         last_constraint_num = pb_model.last_constraint_number();
+        std::cout << last_constraint_num << "!!!" << std::endl;
     }
 
     vector<int> g0_deg = calculate_degrees(g0);
@@ -1406,4 +1452,3 @@ int main(int argc, char** argv) {
     if (aborted)
         cout << "TIMEOUT" << endl;
 }
-
