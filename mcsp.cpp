@@ -742,7 +742,9 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
     if (target_subgraph_size == -1) {
         // optimisation version
         for (int p=0; p<g0.n; p++) {
-            pb_model.add_objective_term({1, false, assignment_var_name(p, -1)});
+            for (int t=0; t<g0.n; t++) {
+                pb_model.add_objective_term({1, true, assignment_var_name(p, t)});
+            }
         }
     } else {
         pb_model.add_constraint(objective_constraint(g0.n, g1.n, target_subgraph_size)
@@ -1065,24 +1067,26 @@ void write_bound_constraint(
 void write_solution(std::ostream & proof_stream,
         const vector<VtxPair> & current,
         const Graph & pattern_g,
+        const Graph & target_g,
         const vector<int> & vtx_name0,
         const vector<int> & vtx_name1,
         int & last_constraint_num,
         char prefix)
 {
-    std::vector<bool> pattern_v_used(pattern_g.n);
-    proof_stream << prefix;
+    vector<vector<bool>> assignment_made(pattern_g.n, vector<bool>(target_g.n));
     for (auto assignment : current) {
         int v = vtx_name0[assignment.v];
         int w = vtx_name1[assignment.w];
-        proof_stream << " " << assignment_var_name(v, w);
-        pattern_v_used[v] = true;
+        assignment_made[v][w] = true;
     }
+    proof_stream << prefix;
     for (int v=0; v<pattern_g.n; v++) {
-        if (!pattern_v_used[v]) {
-            proof_stream << " " << assignment_var_name(v, -1);
-        } else if (prefix == 'o') {
-            proof_stream << " ~" << assignment_var_name(v, -1);
+        for (int w=0; w<pattern_g.n; w++) {
+            if (assignment_made[v][w]) {
+                proof_stream << " " << assignment_var_name(v, w);
+            } else {
+                proof_stream << " ~" << assignment_var_name(v, w);
+            }
         }
     }
     proof_stream << std::endl;
@@ -1124,7 +1128,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         if (!arguments.quiet) cout << "Incumbent size: " << incumbent.size() << endl;
         if (arguments.decision_size==-1 && proof_stream) {
             proof_level_set(0, proof_stream.value());
-            write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num, 'o');
+            write_solution(proof_stream.value(), current, g0, g1, vtx_name0, vtx_name1, last_constraint_num, 'o');
             proof_level_set(current.size(), proof_stream.value());
         }
     }
@@ -1174,7 +1178,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         if (arguments.count_solutions && current.size() >= matching_size_goal) {
             ++solution_count;
             if (proof_stream) {
-                write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num, 'v');
+                write_solution(proof_stream.value(), current, g0, g1, vtx_name0, vtx_name1, last_constraint_num, 'v');
             }
         }
 
@@ -1282,7 +1286,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
         if (arguments.count_solutions && 0 == arguments.decision_size) {
             ++solution_count;
             if (proof_stream) {
-                write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num, 'v');
+                write_solution(proof_stream.value(), current, g0, g1, vtx_name0, vtx_name1, last_constraint_num, 'v');
             }
         }
         solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, proof_stream,
@@ -1303,7 +1307,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
     } else {
         auto domains_copy = domains;
         solve(g0, g1, incumbent, current, domains_copy, left, right, 1, proof_stream,
-                vtx_name0, vtx_name1, mapping_constraint_nums, mapping_constraint_nums, last_constraint_num, decisions);
+                vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num, decisions);
     }
     if (proof_stream && (arguments.count_solutions || arguments.decision_size == -1 || int(incumbent.size()) < arguments.decision_size)) {
         *proof_stream << "u >= 1;" << std::endl;
