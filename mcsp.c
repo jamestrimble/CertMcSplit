@@ -458,7 +458,8 @@ InequalityGeq connectedness_constraint(int K, int p, int q)
     return constraint;
 }
 
-void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0)
+void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0,
+        int subgraph_order)
 {
     // base case
     for (int u=0; u<g0.n; u++) {
@@ -491,7 +492,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
 
     // inductive case
     int k = 1;
-    while ((1 << k) + 1 < g0.n) {
+    while ((1 << k) + 1 < subgraph_order) {
         for (int u=0; u<g0.n; u++) {
             for (int part=1; part<=2; part++) {
                 InequalityGeq constraint = connectedness_base_constraint_1v(k, u, g0, part);
@@ -544,7 +545,8 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
     }
 }
 
-void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0)
+void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0,
+        int subgraph_order)
 {
     // base case
     for (int u=0; u<g0.n; u++) {
@@ -572,7 +574,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
 
     // inductive case
     int k = 1;
-    while ((1 << k) + 1 < g0.n) {
+    while ((1 << k) + 1 < subgraph_order) {
         for (int u=0; u<g0.n; u++) {
             for (int w=0; w<g0.n; w++) {
                 if (u == w) {
@@ -630,7 +632,8 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
     }
 }
 
-void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0)
+void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0,
+        int subgraph_order)
 {
     // base case
     for (int u=0; u<g0.n; u++) {
@@ -657,7 +660,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
     }
 
     // inductive case
-    for (int k=2; k<g0.n; k++) {
+    for (int k=2; k<subgraph_order; k++) {
         for (int u=0; u<g0.n; u++) {
             for (int w=0; w<g0.n; w++) {
                 if (u == w) {
@@ -699,7 +702,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
             }
         }
     }
-    int K = g0.n - 1;
+    int K = subgraph_order - 1;
     // connectivity constraints
     for (int p=0; p<g0.n; p++) {
         for (int q=0; q<g0.n; q++) {
@@ -753,13 +756,13 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
     if (arguments.connected) {
         switch (arguments.connected) {
         case 1:
-            add_connectivity_to_pb_model_version_1(pb_model, g0);
+            add_connectivity_to_pb_model_version_1(pb_model, g0, target_subgraph_size);
             break;
         case 2:
-            add_connectivity_to_pb_model_version_2(pb_model, g0);
+            add_connectivity_to_pb_model_version_2(pb_model, g0, target_subgraph_size);
             break;
         default:
-            add_connectivity_to_pb_model_version_3(pb_model, g0);
+            add_connectivity_to_pb_model_version_3(pb_model, g0, target_subgraph_size);
             break;
         }
     }
