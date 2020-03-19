@@ -1038,6 +1038,30 @@ void write_bound_constraint(
     ++last_constraint_num;
 }
 
+void write_solution(std::ostream & proof_stream,
+        const vector<VtxPair> & current,
+        const Graph & pattern_g,
+        const vector<int> & vtx_name0,
+        const vector<int> & vtx_name1,
+        int & last_constraint_num)
+{
+    std::vector<bool> pattern_v_used(pattern_g.n);
+    proof_stream << "v";
+    for (auto assignment : current) {
+        int v = vtx_name0[assignment.v];
+        int w = vtx_name1[assignment.w];
+        proof_stream << " " << assignment_var_name(v, w);
+        pattern_v_used[v] = true;
+    }
+    for (int v=0; v<pattern_g.n; v++) {
+        if (!pattern_v_used[v]) {
+            proof_stream << " " << assignment_var_name(v, -1);
+        }
+    }
+    proof_stream << std::endl;
+    ++last_constraint_num;
+}
+
 void proof_level_set(int level, std::ostream & proof_stream)
 {
     proof_stream << "# " << level << std::endl;
@@ -1066,13 +1090,17 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
     }
     nodes++;
 
-    if (arguments.count_solutions && current.size() == matching_size_goal) {
-        ++solution_count;
-    }
-
     if (current.size() > incumbent.size()) {
         incumbent = current;
         if (!arguments.quiet) cout << "Incumbent size: " << incumbent.size() << endl;
+    }
+
+    if (arguments.count_solutions && current.size() == matching_size_goal) {
+        ++solution_count;
+        if (proof_stream) {
+            write_solution(proof_stream.value(), current, g0, vtx_name0, vtx_name1, last_constraint_num);
+            return;
+        }
     }
 
     unsigned int bound = current.size() + calc_bound(domains);
@@ -1220,7 +1248,7 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
         solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, proof_stream,
                     vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
                     last_constraint_num, decisions);
-        if (proof_stream && int(incumbent.size()) < arguments.decision_size) {
+        if (proof_stream && (arguments.count_solutions || int(incumbent.size()) < arguments.decision_size)) {
             *proof_stream << "u >= 1;" << std::endl;
             ++last_constraint_num;
             *proof_stream << "c " << last_constraint_num << " 0" << std::endl;
