@@ -1120,6 +1120,9 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
                 proof_stream, vtx_name0, vtx_name1,
                 mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
                 decisions);
+        if (arguments.decision_size != -1 && !arguments.count_solutions && incumbent.size()==matching_size_goal) {
+            return;
+        }
         current.pop_back();
         if (proof_stream)
             proof_level_set(current.size(), proof_stream.value());
