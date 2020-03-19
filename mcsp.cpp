@@ -779,18 +779,16 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
         }
     }
 
-    if (arguments.connected) {
-        switch (arguments.connected) {
-        case 1:
-            add_connectivity_to_pb_model_version_1(pb_model, g0, target_subgraph_size);
-            break;
-        case 2:
-            add_connectivity_to_pb_model_version_2(pb_model, g0, target_subgraph_size);
-            break;
-        default:
-            add_connectivity_to_pb_model_version_3(pb_model, g0, target_subgraph_size);
-            break;
-        }
+    switch (arguments.connected) {
+    case 1:
+        add_connectivity_to_pb_model_version_1(pb_model, g0, target_subgraph_size==-1 ? g0.n : target_subgraph_size);
+        break;
+    case 2:
+        add_connectivity_to_pb_model_version_2(pb_model, g0, target_subgraph_size==-1 ? g0.n : target_subgraph_size);
+        break;
+    case 3:
+        add_connectivity_to_pb_model_version_3(pb_model, g0, target_subgraph_size==-1 ? g0.n : target_subgraph_size);
+        break;
     }
 
     return pb_model;
