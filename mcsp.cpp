@@ -1085,7 +1085,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         return;
     }
 
-    if (arguments.big_first && incumbent.size()==matching_size_goal)
+    if ((arguments.big_first || (arguments.decision_size != -1 && !arguments.count_solutions)) && incumbent.size()==matching_size_goal)
         return;
 
     int bd_idx = select_bidomain(domains, left, current.size());
