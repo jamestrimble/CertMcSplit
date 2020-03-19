@@ -1089,7 +1089,6 @@ void write_solution(std::ostream & proof_stream,
     ++last_constraint_num;
     if (prefix == 'o')
         number_of_most_recent_objective_constraint = last_constraint_num;
-    std::cout << "!" << number_of_most_recent_objective_constraint << std::endl;
 }
 
 void proof_level_set(int level, std::ostream & proof_stream)
@@ -1386,7 +1385,6 @@ int main(int argc, char** argv) {
                 mapping_constraint_nums, injectivity_constraint_nums);
         pb_model.output_model(opb_stream);
         last_constraint_num = pb_model.last_constraint_number();
-        std::cout << last_constraint_num << "!!!" << std::endl;
     }
 
     vector<int> g0_deg = calculate_degrees(g0);
