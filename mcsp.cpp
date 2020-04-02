@@ -485,7 +485,7 @@ void add_connectivity_constraints(PbModel & pb_model, const Graph & g0, int K)
     }
 }
 
-int ceil_of_log_base_2(int x);
+int ceil_of_log_base_2(int x) {
     int K = 0;
     int two_to_K = 1;
     while (two_to_K < x) {
