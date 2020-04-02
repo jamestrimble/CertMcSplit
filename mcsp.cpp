@@ -17,7 +17,7 @@
 
 #include <argp.h>
 
-// FIXME: make this non-global!
+// TODO: make this non-global
 int number_of_most_recent_objective_constraint = 1;
 
 using std::vector;
@@ -29,14 +29,12 @@ static void fail(std::string msg) {
     exit(1);
 }
 
-enum Heuristic { min_max, min_product };
-
 /*******************************************************************************
                              Command-line arguments
 *******************************************************************************/
 
-static char doc[] = "Find a maximum common subgraph of two graphs \vHEURISTIC can be min_max or min_product";
-static char args_doc[] = "HEURISTIC FILENAME1 FILENAME2";
+static char doc[] = "Find a maximum common subgraph of two graphs";
+static char args_doc[] = "FILENAME1 FILENAME2";
 static struct argp_option options[] = {
     {"quiet", 'q', 0, 0, "Quiet output"},
     {"verbose", 'v', 0, 0, "Verbose output"},
@@ -66,7 +64,6 @@ static struct {
     bool vertex_labelled;
     bool big_first;
     bool count_solutions;
-    Heuristic heuristic;
     char *filename1;
     char *filename2;
     char *opb_filename;
@@ -157,15 +154,8 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case ARGP_KEY_ARG:
             if (arguments.arg_num == 0) {
-                if (std::string(arg) == "min_max")
-                    arguments.heuristic = min_max;
-                else if (std::string(arg) == "min_product")
-                    arguments.heuristic = min_product;
-                else
-                    fail("Unknown heuristic (try min_max or min_product)");
-            } else if (arguments.arg_num == 1) {
                 arguments.filename1 = arg;
-            } else if (arguments.arg_num == 2) {
+            } else if (arguments.arg_num == 1) {
                 arguments.filename2 = arg;
             } else {
                 argp_usage(state);
@@ -173,7 +163,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             arguments.arg_num++;
             break;
         case ARGP_KEY_END:
-            if (arguments.arg_num != 3)
+            if (arguments.arg_num != 2)
                 argp_usage(state);
             break;
         default: return ARGP_ERR_UNKNOWN;
@@ -907,9 +897,7 @@ int select_bidomain(const vector<Bidomain>& domains, const vector<int> & left,
     for (unsigned int i=0; i<domains.size(); i++) {
         const Bidomain &bd = domains[i];
         if (arguments.connected && current_matching_size>0 && !bd.is_adjacent) continue;
-        int len = arguments.heuristic == min_max ?
-                std::max(bd.left_len, bd.right_len) :
-                bd.left_len * bd.right_len;
+        int len = std::max(bd.left_len, bd.right_len);
         if (len < min_size) {
             min_size = len;
             min_tie_breaker = find_min_value(left, bd.l, bd.left_len);
