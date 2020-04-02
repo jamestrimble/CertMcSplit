@@ -485,6 +485,16 @@ void add_connectivity_constraints(PbModel & pb_model, const Graph & g0, int K)
     }
 }
 
+int ceil_of_log_base_2(int x);
+    int K = 0;
+    int two_to_K = 1;
+    while (two_to_K < x) {
+        ++K;
+        two_to_K *= 2;
+    }
+    return K;
+}
+
 void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0)
 {
     // base case
@@ -513,12 +523,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
     }
 
     // inductive case
-    int K = 0;
-    int two_to_K = 1;
-    while (two_to_K < g0.n - 1) {
-        ++K;
-        two_to_K *= 2;
-    }
+    int K = ceil_of_log_base_2(g0.n - 1);
     for (int k=1; k<=K; k++) {
         for (int u=0; u<g0.n; u++) {
             pb_model.add_comment("Base connectedness constraint for vertex " + std::to_string(u));
@@ -581,12 +586,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
     }
 
     // inductive case
-    int K = 0;
-    int two_to_K = 1;
-    while (two_to_K < g0.n - 1) {
-        ++K;
-        two_to_K *= 2;
-    }
+    int K = ceil_of_log_base_2(g0.n - 1);
     for (int k=1; k<=K; k++) {
         for (int u=0; u<g0.n; u++) {
             for (int w=0; w<g0.n; w++) {
