@@ -718,6 +718,21 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
         pb_model.add_constraint(objective_constraint(g0.n, g1.n, target_subgraph_size));
     }
 
+    if (arguments.vertex_labelled) {
+        pb_model.add_comment("Vertex label constraints");
+        for (int p=0; p<g0.n; p++) {
+            for (int t=0; t<g1.n; t++) {
+                if (g0.label[p] != g1.label[t]) {
+                    // The labels of vertices p and t do not match, so p cannot be matched to t
+                    InequalityGeq constraint;
+                    constraint.add_term(-1 * assignment_var(p, t));
+                    constraint.set_rhs(0);
+                    pb_model.add_constraint(constraint);
+                }
+            }
+        }
+    }
+
     for (int i=0; i<g0.n; i++) {
         pb_model.add_comment("Mapping constraint for pattern vertex " + std::to_string(i));
         InequalityGeq constraint = mapping_constraint(i, g1.n, true);
