@@ -41,9 +41,7 @@ static struct argp_option options[] = {
     {"dimacs", 'd', 0, 0, "Read DIMACS format"},
     {"lad", 'l', 0, 0, "Read LAD format"},
     {"connected", 'c', "version", 0, "Solve MCCS (with PB model version 1, 2 or 3)"},
-    {"directed", 'i', 0, 0, "Use directed graphs"},
-    {"labelled", 'a', 0, 0, "Use edge and vertex labels"},
-    {"vertex-labelled-only", 'x', 0, 0, "Use vertex labels, but not edge labels"},
+    {"vertex-labelled", 'V', 0, 0, "Use vertex labels"},
     {"big-first", 'b', 0, 0, "First try to find an induced subgraph isomorphism, then decrement the target size"},
     {"count-solutions", 'C', 0, 0, "(For the decision problem only) count solutions"},
     {"decision", 'D', "size", 0, "Solve the decision problem"},
@@ -59,8 +57,6 @@ static struct {
     bool dimacs;
     bool lad;
     int connected;
-    bool directed;
-    bool edge_labelled;
     bool vertex_labelled;
     bool big_first;
     bool count_solutions;
@@ -81,8 +77,6 @@ void set_default_arguments() {
     arguments.dimacs = false;
     arguments.lad = false;
     arguments.connected = 0;
-    arguments.directed = false;
-    arguments.edge_labelled = false;
     arguments.vertex_labelled = false;
     arguments.big_first = false;
     arguments.count_solutions = false;
@@ -114,24 +108,9 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             arguments.verbose = true;
             break;
         case 'c':
-            if (arguments.directed)
-                fail("The connected and directed options can't be used together.");
             arguments.connected = std::stoi(arg);
             break;
-        case 'i':
-            if (arguments.connected)
-                fail("The connected and directed options can't be used together.");
-            arguments.directed = true;
-            break;
-        case 'a':
-            if (arguments.vertex_labelled)
-                fail("The -a and -x options can't be used together.");
-            arguments.edge_labelled = true;
-            arguments.vertex_labelled = true;
-            break;
-        case 'x':
-            if (arguments.edge_labelled)
-                fail("The -a and -x options can't be used together.");
+        case 'V':
             arguments.vertex_labelled = true;
             break;
         case 'b':
@@ -925,10 +904,8 @@ int partition(vector<int>& all_vv, int start, int len, const vector<unsigned int
     return i;
 }
 
-// multiway is for directed and/or labelled graphs
 vector<Bidomain> filter_domains(const vector<Bidomain> & d, vector<int> & left,
-        vector<int> & right, const Graph & g0, const Graph & g1, int v, int w,
-        bool multiway)
+        vector<int> & right, const Graph & g0, const Graph & g1, int v, int w)
 {
     vector<Bidomain> new_d;
     new_d.reserve(d.size());
@@ -936,41 +913,15 @@ vector<Bidomain> filter_domains(const vector<Bidomain> & d, vector<int> & left,
         int l = old_bd.l;
         int r = old_bd.r;
         // After these two partitions, left_len and right_len are the lengths of the
-        // arrays of vertices with edges from v or w (int the directed case, edges
-        // either from or to v or w)
+        // arrays of vertices with edges from v or w
         int left_len = partition(left, l, old_bd.left_len, g0.adjmat[v]);
         int right_len = partition(right, r, old_bd.right_len, g1.adjmat[w]);
         int left_len_noedge = old_bd.left_len - left_len;
         int right_len_noedge = old_bd.right_len - right_len;
-        if (left_len_noedge && right_len_noedge)
+        if (left_len_noedge && right_len_noedge) {
             new_d.push_back({l+left_len, r+right_len, left_len_noedge, right_len_noedge, old_bd.is_adjacent});
-        if (multiway && left_len && right_len) {
-            auto& adjrow_v = g0.adjmat[v];
-            auto& adjrow_w = g1.adjmat[w];
-            auto l_begin = std::begin(left) + l;
-            auto r_begin = std::begin(right) + r;
-            std::sort(l_begin, l_begin+left_len, [&](int a, int b)
-                    { return adjrow_v[a] < adjrow_v[b]; });
-            std::sort(r_begin, r_begin+right_len, [&](int a, int b)
-                    { return adjrow_w[a] < adjrow_w[b]; });
-            int l_top = l + left_len;
-            int r_top = r + right_len;
-            while (l<l_top && r<r_top) {
-                unsigned int left_label = adjrow_v[left[l]];
-                unsigned int right_label = adjrow_w[right[r]];
-                if (left_label < right_label) {
-                    l++;
-                } else if (left_label > right_label) {
-                    r++;
-                } else {
-                    int lmin = l;
-                    int rmin = r;
-                    do { l++; } while (l<l_top && adjrow_v[left[l]]==left_label);
-                    do { r++; } while (r<r_top && adjrow_w[right[r]]==left_label);
-                    new_d.push_back({lmin, rmin, l-lmin, r-rmin, true});
-                }
-            }
-        } else if (left_len && right_len) {
+        }
+        if (left_len && right_len) {
             new_d.push_back({l, r, left_len, right_len, true});
         }
     }
@@ -1163,8 +1114,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         right[bd.r + idx] = right[bd.r + bd.right_len];
         right[bd.r + bd.right_len] = w;
 
-        auto new_domains = filter_domains(domains, left, right, g0, g1, v, w,
-                arguments.directed || arguments.edge_labelled);
+        auto new_domains = filter_domains(domains, left, right, g0, g1, v, w);
         current.push_back(VtxPair(v, w));
 //        if (proof_stream)
 //            proof_stream << "* decision " << v << " " << w << std::endl;
@@ -1318,13 +1268,10 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
 
 vector<int> calculate_degrees(const Graph & g) {
     vector<int> degree(g.n, 0);
-    for (int v=0; v<g.n; v++) {
-        for (int w=0; w<g.n; w++) {
-            unsigned int mask = 0xFFFFu;
-            if (g.adjmat[v][w] & mask) degree[v]++;
-            if (g.adjmat[v][w] & ~mask) degree[v]++;  // inward edge, in directed case
-        }
-    }
+    for (int v=0; v<g.n; v++)
+        for (int w=0; w<g.n; w++)
+            if (g.adjmat[v][w])
+                degree[v]++;
     return degree;
 }
 
@@ -1342,10 +1289,10 @@ int main(int argc, char** argv) {
     }
 
     char format = arguments.dimacs ? 'D' : arguments.lad ? 'L' : 'B';
-    struct Graph g0 = readGraph(arguments.filename1, format, arguments.directed,
-            arguments.edge_labelled, arguments.vertex_labelled);
-    struct Graph g1 = readGraph(arguments.filename2, format, arguments.directed,
-            arguments.edge_labelled, arguments.vertex_labelled);
+    struct Graph g0 = readGraph(arguments.filename1, format, false,
+            false, arguments.vertex_labelled);
+    struct Graph g1 = readGraph(arguments.filename2, format, false,
+            false, arguments.vertex_labelled);
 
     std::thread timeout_thread;
     std::mutex timeout_mutex;
