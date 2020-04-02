@@ -1116,12 +1116,10 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 
         auto new_domains = filter_domains(domains, left, right, g0, g1, v, w);
         current.push_back(VtxPair(v, w));
-//        if (proof_stream)
-//            proof_stream << "* decision " << v << " " << w << std::endl;
-        if (proof_stream)
+        if (proof_stream) {
             decisions.push_back(-1 * assignment_var(vtx_name0[v], vtx_name1[w]));
-        if (proof_stream)
             proof_level_set(current.size(), proof_stream.value());
+        }
 
         if (arguments.count_solutions && current.size() >= matching_size_goal) {
             ++solution_count;
@@ -1138,22 +1136,14 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
             return;
         }
         current.pop_back();
-        if (proof_stream)
-            proof_level_set(current.size(), proof_stream.value());
         if (proof_stream) {
+            proof_level_set(current.size(), proof_stream.value());
             write_backtracking_constraint(decisions, proof_stream.value());
             ++last_constraint_num;
-        }
-//        if (proof_stream)
-//            proof_stream << "* undo decision " << v << " " << w << std::endl;
-        if (proof_stream)
             proof_level_wipe(current.size() + 1, proof_stream.value());
-        if (proof_stream)
             decisions.pop_back();
-//        if (proof_stream)
-//            proof_stream << "* decision not" << v << " " << w << std::endl;
-        if (proof_stream)
             decisions.push_back(-1 * ~assignment_var(vtx_name0[v], vtx_name1[w]));
+        }
     }
     bd.right_len++;
     if (bd.left_len == 0)
@@ -1166,10 +1156,6 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
             proof_stream, vtx_name0, vtx_name1,
             mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
             decisions);
-//    if (proof_stream) {
-//        write_backtracking_constraint(decisions, proof_stream);
-//        ++last_constraint_num;
-//    }
     decisions.resize(decisions_len_at_start_of_solve);
 }
 
@@ -1339,9 +1325,9 @@ int main(int argc, char** argv) {
     vector<int> g0_deg = calculate_degrees(g0);
     vector<int> g1_deg = calculate_degrees(g1);
 
+    // Use the same ordering of vertices as in the IJCAI 2017 paper.
     vector<int> vv0(g0.n);
     std::iota(std::begin(vv0), std::end(vv0), 0);
-
     bool g1_dense = sum(g1_deg) > g1.n*(g1.n-1);
     std::stable_sort(std::begin(vv0), std::end(vv0), [&](int a, int b) {
         return g1_dense ? (g0_deg[a]<g0_deg[b]) : (g0_deg[a]>g0_deg[b]);
