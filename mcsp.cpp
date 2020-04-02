@@ -471,6 +471,20 @@ InequalityGeq connectedness_constraint(int K, int p, int q)
     return constraint;
 }
 
+void add_connectivity_constraints(PbModel & pb_model, const Graph & g0, int K)
+{
+    for (int p=0; p<g0.n; p++) {
+        for (int q=0; q<g0.n; q++) {
+            if (p == q) {
+                continue;
+            }
+            InequalityGeq constraint = connectedness_constraint(K, p, q);
+            pb_model.add_comment("Connectedness constraint p=" + std::to_string(p) + " q=" + std::to_string(q));
+            pb_model.add_constraint(constraint);
+        }
+    }
+}
+
 void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0)
 {
     // base case
@@ -539,17 +553,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
         }
     }
 
-    // connectivity constraints
-    for (int p=0; p<g0.n; p++) {
-        for (int q=0; q<g0.n; q++) {
-            if (p == q) {
-                continue;
-            }
-            InequalityGeq constraint = connectedness_constraint(K, p, q);
-            pb_model.add_comment("Connectedness constraint p=" + std::to_string(p) + " q=" + std::to_string(q));
-            pb_model.add_constraint(constraint);
-        }
-    }
+    add_connectivity_constraints(pb_model, g0, K);
 }
 
 void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0)
@@ -624,17 +628,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
         }
     }
 
-    // connectivity constraints
-    for (int p=0; p<g0.n; p++) {
-        for (int q=0; q<g0.n; q++) {
-            if (p == q) {
-                continue;
-            }
-            InequalityGeq constraint = connectedness_constraint(K, p, q);
-            pb_model.add_comment("Connectedness constraint p=" + std::to_string(p) + " q=" + std::to_string(q));
-            pb_model.add_constraint(constraint);
-        }
-    }
+    add_connectivity_constraints(pb_model, g0, K);
 }
 
 void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0)
@@ -704,17 +698,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
         }
     }
 
-    // connectivity constraints
-    for (int p=0; p<g0.n; p++) {
-        for (int q=0; q<g0.n; q++) {
-            if (p == q) {
-                continue;
-            }
-            InequalityGeq constraint = connectedness_constraint(K, p, q);
-            pb_model.add_comment("Connectedness constraint p=" + std::to_string(p) + " q=" + std::to_string(q));
-            pb_model.add_constraint(constraint);
-        }
-    }
+    add_connectivity_constraints(pb_model, g0, K);
 }
 
 PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_size,
