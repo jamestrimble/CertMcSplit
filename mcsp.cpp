@@ -726,7 +726,6 @@ unsigned long long solution_count{ 0 };
 struct VtxPair {
     int v;
     int w;
-    VtxPair(int v, int w): v(v), w(w) {}
 };
 
 struct Bidomain {
@@ -1050,7 +1049,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         right[bd.r + bd.right_len] = w;
 
         auto new_domains = filter_domains(domains, left, right, g0, g1, v, w);
-        current.push_back(VtxPair(v, w));
+        current.push_back({v, w});
         if (proof_stream) {
             decisions.push_back(assignment_var(vtx_name0[v], vtx_name1[w]));
             proof_level_set(current.size(), proof_stream.value());
