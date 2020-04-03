@@ -36,7 +36,6 @@ static void fail(std::string msg) {
 static char doc[] = "Find a maximum common subgraph of two graphs";
 static char args_doc[] = "FILENAME1 FILENAME2";
 static struct argp_option options[] = {
-    {"quiet", 'q', 0, 0, "Quiet output"},
     {"verbose", 'v', 0, 0, "Verbose output"},
     {"dimacs", 'd', 0, 0, "Read DIMACS format"},
     {"lad", 'l', 0, 0, "Read LAD format"},
@@ -52,7 +51,6 @@ static struct argp_option options[] = {
 };
 
 static struct {
-    bool quiet;
     bool verbose;
     bool dimacs;
     bool lad;
@@ -72,7 +70,6 @@ static struct {
 static std::atomic<bool> abort_due_to_timeout;
 
 void set_default_arguments() {
-    arguments.quiet = false;
     arguments.verbose = false;
     arguments.dimacs = false;
     arguments.lad = false;
@@ -100,9 +97,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             if (arguments.dimacs)
                 fail("The -d and -l options cannot be used together.\n");
             arguments.lad = true;
-            break;
-        case 'q':
-            arguments.quiet = true;
             break;
         case 'v':
             arguments.verbose = true;
@@ -1008,7 +1002,6 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 
     if (current.size() > incumbent.size()) {
         incumbent = current;
-        if (!arguments.quiet) cout << "Incumbent size: " << incumbent.size() << endl;
         if (arguments.decision_size==-1 && proof_stream) {
             proof_level_set(0, proof_stream.value());
             write_solution(proof_stream.value(), current, g0, g1, vtx_name0, vtx_name1, last_constraint_num, 'o');
@@ -1170,7 +1163,6 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
             solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal, proof_stream,
                     vtx_name0, vtx_name1, {}, {}, last_constraint_num, decisions);
             if (incumbent.size() == goal || abort_due_to_timeout) break;
-            if (!arguments.quiet) cout << "Upper bound: " << goal-1 << std::endl;
         }
     } else {
         auto domains_copy = domains;
