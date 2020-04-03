@@ -717,7 +717,6 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
                                      Stats
 *******************************************************************************/
 
-unsigned long long nodes{ 0 };
 unsigned long long solution_count{ 0 };
 
 /*******************************************************************************
@@ -745,7 +744,6 @@ struct Bidomain {
 void show(const vector<VtxPair>& current, const vector<Bidomain> &domains,
         const vector<int>& left, const vector<int>& right)
 {
-    cout << "Nodes: " << nodes << std::endl;
     cout << "Length of current assignment: " << current.size() << std::endl;
     cout << "Current assignment:";
     for (unsigned int i=0; i<current.size(); i++) {
@@ -1008,7 +1006,6 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
     if (arguments.verbose) {
         show(current, domains, left, right);
     }
-    nodes++;
 
     if (current.size() > incumbent.size()) {
         incumbent = current;
@@ -1318,7 +1315,6 @@ int main(int argc, char** argv) {
 
     if (arguments.count_solutions)
         cout << "Solutions counted:          " << solution_count << endl;
-    cout << "Nodes:                      " << nodes << endl;
     cout << "CPU time (ms):              " << time_elapsed << endl;
     if (aborted)
         cout << "TIMEOUT" << endl;
