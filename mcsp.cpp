@@ -41,7 +41,6 @@ static struct argp_option options[] = {
     {"lad", 'l', 0, 0, "Read LAD format"},
     {"connected", 'c', "version", 0, "Solve MCCS (with PB model version 1, 2 or 3)"},
     {"vertex-labelled", 'V', 0, 0, "Use vertex labels"},
-    {"big-first", 'b', 0, 0, "First try to find an induced subgraph isomorphism, then decrement the target size"},
     {"count-solutions", 'C', 0, 0, "(For the decision problem only) count solutions"},
     {"decision", 'D', "size", 0, "Solve the decision problem"},
     {"timeout", 't', "timeout", 0, "Specify a timeout (seconds)"},
@@ -56,7 +55,6 @@ static struct {
     bool lad;
     int connected;
     bool vertex_labelled;
-    bool big_first;
     bool count_solutions;
     char *filename1;
     char *filename2;
@@ -75,7 +73,6 @@ void set_default_arguments() {
     arguments.lad = false;
     arguments.connected = 0;
     arguments.vertex_labelled = false;
-    arguments.big_first = false;
     arguments.count_solutions = false;
     arguments.filename1 = NULL;
     arguments.filename2 = NULL;
@@ -106,9 +103,6 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state) {
             break;
         case 'V':
             arguments.vertex_labelled = true;
-            break;
-        case 'b':
-            arguments.big_first = true;
             break;
         case 'C':
             arguments.count_solutions = true;
@@ -898,16 +892,22 @@ void write_backtracking_constraint(const vector<Literal> & decisions, std::ostre
     proof_stream << std::endl;
 }
 
+struct ProofLoggingData
+{
+    std::optional<std::ofstream> & proof_stream;
+    const vector<int> & vtx_name0;
+    const vector<int> & vtx_name1;
+    const vector<int> & mapping_constraint_nums;
+    const vector<int> & injectivity_constraint_nums;
+    int & last_constraint_num;
+    vector<Literal> & decisions;
+};
+
 void write_bound_constraint(
         const vector<Bidomain> & domains,
         vector<int> & left,
         vector<int> & right,
-        const vector<int> & mapping_constraint_nums,
-        const vector<int> & injectivity_constraint_nums,
-        std::ostream & proof_stream,
-        const vector<int> & vtx_name0,
-        const vector<int> & vtx_name1,
-        int & last_constraint_num)
+        ProofLoggingData & pld)
 {
     if (domains.empty()) {
         return;
@@ -917,60 +917,57 @@ void write_bound_constraint(
         if (bd.left_len <= bd.right_len) {
             for (int i=0; i<bd.left_len; i++) {
                 int v_in_sorted_graph = left[bd.l+i];
-                int v_in_original_graph = vtx_name0[v_in_sorted_graph];
-                constraint_nums.push_back(mapping_constraint_nums[v_in_original_graph]);
+                int v_in_original_graph = pld.vtx_name0[v_in_sorted_graph];
+                constraint_nums.push_back(pld.mapping_constraint_nums[v_in_original_graph]);
             }
         } else {
             for (int i=0; i<bd.right_len; i++) {
                 int v_in_sorted_graph = right[bd.r+i];
-                int v_in_original_graph = vtx_name1[v_in_sorted_graph];
-                constraint_nums.push_back(injectivity_constraint_nums[v_in_original_graph]);
+                int v_in_original_graph = pld.vtx_name1[v_in_sorted_graph];
+                constraint_nums.push_back(pld.injectivity_constraint_nums[v_in_original_graph]);
             }
         }
     }
-    proof_stream << "p ";
+    *pld.proof_stream << "p ";
     bool first = true;
     for (int constraint_num : constraint_nums) {
-        proof_stream << constraint_num << " ";
+        *pld.proof_stream << constraint_num << " ";
         if (!first) {
-            proof_stream << "+ ";
+            *pld.proof_stream << "+ ";
         }
         first = false;
     }
-    proof_stream << number_of_most_recent_objective_constraint << " + 0";
-    proof_stream << std::endl;
-    ++last_constraint_num;
+    *pld.proof_stream << number_of_most_recent_objective_constraint << " + 0";
+    *pld.proof_stream << std::endl;
+    ++pld.last_constraint_num;
 }
 
-void write_solution(std::ostream & proof_stream,
-        const vector<VtxPair> & current,
+void write_solution(const vector<VtxPair> & current,
         const Graph & pattern_g,
         const Graph & target_g,
-        const vector<int> & vtx_name0,
-        const vector<int> & vtx_name1,
-        int & last_constraint_num,
-        char prefix)
+        char prefix,
+        ProofLoggingData & pld)
 {
     vector<vector<bool>> assignment_made(pattern_g.n, vector<bool>(target_g.n));
     for (auto assignment : current) {
-        int v = vtx_name0[assignment.v];
-        int w = vtx_name1[assignment.w];
+        int v = pld.vtx_name0[assignment.v];
+        int w = pld.vtx_name1[assignment.w];
         assignment_made[v][w] = true;
     }
-    proof_stream << prefix;
+    *pld.proof_stream << prefix;
     for (int v=0; v<pattern_g.n; v++) {
         for (int w=0; w<pattern_g.n; w++) {
             if (assignment_made[v][w]) {
-                proof_stream << " " << assignment_var(v, w).var;
+                *pld.proof_stream << " " << assignment_var(v, w).var;
             } else {
-                proof_stream << " ~" << assignment_var(v, w).var;
+                *pld.proof_stream << " ~" << assignment_var(v, w).var;
             }
         }
     }
-    proof_stream << std::endl;
-    ++last_constraint_num;
+    *pld.proof_stream << std::endl;
+    ++pld.last_constraint_num;
     if (prefix == 'o')
-        number_of_most_recent_objective_constraint = last_constraint_num;
+        number_of_most_recent_objective_constraint = pld.last_constraint_num;
 }
 
 void proof_level_set(int level, std::ostream & proof_stream)
@@ -986,15 +983,12 @@ void proof_level_wipe(int level, std::ostream & proof_stream)
 void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         vector<VtxPair> & current, vector<Bidomain> & domains,
         vector<int> & left, vector<int> & right, unsigned int matching_size_goal,
-        std::optional<std::ofstream> & proof_stream,
-        const vector<int> & vtx_name0, const vector<int> & vtx_name1,
-        const vector<int> & mapping_constraint_nums, const vector<int> & injectivity_constraint_nums,
-        int & last_constraint_num, vector<Literal> & decisions)
+        ProofLoggingData & pld)
 {
-    int decisions_len_at_start_of_solve = decisions.size();
-
     if (abort_due_to_timeout)
         return;
+
+    int decisions_len_at_start_of_solve = pld.decisions.size();
 
     if (arguments.verbose) {
         show(current, domains, left, right);
@@ -1002,24 +996,22 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 
     if (current.size() > incumbent.size()) {
         incumbent = current;
-        if (arguments.decision_size==-1 && proof_stream) {
-            proof_level_set(0, proof_stream.value());
-            write_solution(proof_stream.value(), current, g0, g1, vtx_name0, vtx_name1, last_constraint_num, 'o');
-            proof_level_set(current.size(), proof_stream.value());
+        if (arguments.decision_size==-1 && pld.proof_stream) {
+            proof_level_set(0, *pld.proof_stream);
+            write_solution(current, g0, g1, 'o', pld);
+            proof_level_set(current.size(), *pld.proof_stream);
         }
     }
 
     unsigned int bound = current.size() + calc_bound(domains);
     if ((!arguments.count_solutions && bound <= incumbent.size()) || bound < matching_size_goal) {
-        if (proof_stream) {
-            write_bound_constraint(domains, left, right, mapping_constraint_nums,
-                    injectivity_constraint_nums, proof_stream.value(), vtx_name0, vtx_name1,
-                    last_constraint_num);
+        if (pld.proof_stream) {
+            write_bound_constraint(domains, left, right, pld);
         }
         return;
     }
 
-    if ((arguments.big_first || (arguments.decision_size != -1 && !arguments.count_solutions)) && incumbent.size()==matching_size_goal)
+    if ((arguments.decision_size != -1 && !arguments.count_solutions) && incumbent.size()==matching_size_goal)
         return;
 
     int bd_idx = select_bidomain(domains, left, current.size());
@@ -1043,47 +1035,41 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
 
         auto new_domains = filter_domains(domains, left, right, g0, g1, v, w);
         current.push_back({v, w});
-        if (proof_stream) {
-            decisions.push_back(assignment_var(vtx_name0[v], vtx_name1[w]));
-            proof_level_set(current.size(), proof_stream.value());
+        if (pld.proof_stream) {
+            pld.decisions.push_back(assignment_var(pld.vtx_name0[v], pld.vtx_name1[w]));
+            proof_level_set(current.size(), *pld.proof_stream);
         }
 
         if (arguments.count_solutions && current.size() >= matching_size_goal) {
             ++solution_count;
-            if (proof_stream) {
-                write_solution(proof_stream.value(), current, g0, g1, vtx_name0, vtx_name1, last_constraint_num, 'v');
+            if (pld.proof_stream) {
+                write_solution(current, g0, g1, 'v', pld);
             }
         }
 
-        solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal,
-                proof_stream, vtx_name0, vtx_name1,
-                mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
-                decisions);
+        solve(g0, g1, incumbent, current, new_domains, left, right, matching_size_goal, pld);
         if (arguments.decision_size != -1 && !arguments.count_solutions && incumbent.size()==matching_size_goal) {
             return;
         }
         current.pop_back();
-        if (proof_stream) {
-            proof_level_set(current.size(), proof_stream.value());
-            write_backtracking_constraint(decisions, proof_stream.value());
-            ++last_constraint_num;
-            proof_level_wipe(current.size() + 1, proof_stream.value());
-            decisions.pop_back();
-            decisions.push_back(~assignment_var(vtx_name0[v], vtx_name1[w]));
+        if (pld.proof_stream) {
+            proof_level_set(current.size(), *pld.proof_stream);
+            write_backtracking_constraint(pld.decisions, *pld.proof_stream);
+            ++pld.last_constraint_num;
+            proof_level_wipe(current.size() + 1, *pld.proof_stream);
+            pld.decisions.pop_back();
+            pld.decisions.push_back(~assignment_var(pld.vtx_name0[v], pld.vtx_name1[w]));
         }
     }
     bd.right_len++;
     if (bd.left_len == 0)
         remove_bidomain(domains, bd_idx);
-    if (proof_stream) {
-        decisions.resize(decisions_len_at_start_of_solve);
-        decisions.push_back(assignment_var(vtx_name0[v], -1));
+    if (pld.proof_stream) {
+        pld.decisions.resize(decisions_len_at_start_of_solve);
+        pld.decisions.push_back(assignment_var(pld.vtx_name0[v], -1));
     }
-    solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal,
-            proof_stream, vtx_name0, vtx_name1,
-            mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num,
-            decisions);
-    decisions.resize(decisions_len_at_start_of_solve);
+    solve(g0, g1, incumbent, current, domains, left, right, matching_size_goal, pld);
+    pld.decisions.resize(decisions_len_at_start_of_solve);
 }
 
 vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
@@ -1143,31 +1129,19 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
 
     vector<VtxPair> current;
 
+    ProofLoggingData pld {proof_stream, vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
+                last_constraint_num, decisions};
     if (arguments.decision_size != -1) {
         if (arguments.count_solutions && 0 == arguments.decision_size) {
             ++solution_count;
             if (proof_stream) {
-                write_solution(proof_stream.value(), current, g0, g1, vtx_name0, vtx_name1, last_constraint_num, 'v');
+                write_solution(current, g0, g1, 'v', pld);
             }
         }
-        solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, proof_stream,
-                    vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums,
-                    last_constraint_num, decisions);
-    } else if (arguments.big_first) {
-        for (int k=0; k<g0.n; k++) {
-            unsigned int goal = g0.n - k;
-            auto left_copy = left;
-            auto right_copy = right;
-            auto domains_copy = domains;
-            vector<VtxPair> current;
-            solve(g0, g1, incumbent, current, domains_copy, left_copy, right_copy, goal, proof_stream,
-                    vtx_name0, vtx_name1, {}, {}, last_constraint_num, decisions);
-            if (incumbent.size() == goal || abort_due_to_timeout) break;
-        }
+        solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, pld);
     } else {
         auto domains_copy = domains;
-        solve(g0, g1, incumbent, current, domains_copy, left, right, 1, proof_stream,
-                vtx_name0, vtx_name1, mapping_constraint_nums, injectivity_constraint_nums, last_constraint_num, decisions);
+        solve(g0, g1, incumbent, current, domains_copy, left, right, 1, pld);
     }
     if (proof_stream && (arguments.count_solutions || arguments.decision_size == -1 || int(incumbent.size()) < arguments.decision_size)) {
         *proof_stream << "u >= 1;" << std::endl;
@@ -1237,10 +1211,6 @@ int main(int argc, char** argv) {
     vector<int> injectivity_constraint_nums(g1.n);
     int last_constraint_num = 0;
     if (arguments.opb_filename) {
-        if (arguments.big_first) {
-            std::cerr << "OPB output is currently only supported for the decision problem and BnB." << std::endl;
-            exit(1);
-        }
         std::ofstream opb_stream(arguments.opb_filename);
         auto pb_model = build_pb_model(g0, g1, arguments.decision_size,
                 mapping_constraint_nums, injectivity_constraint_nums);
