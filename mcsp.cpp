@@ -1076,7 +1076,8 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
             const vector<int> & vtx_name0, const vector<int> & vtx_name1,
             int last_constraint_num,
             const vector<int> & mapping_constraint_nums,
-            const vector<int> & injectivity_constraint_nums) {
+            const vector<int> & injectivity_constraint_nums)
+{
     vector<int> left;  // the buffer of vertex indices for the left partitions
     vector<int> right;  // the buffer of vertex indices for the right partitions
 
