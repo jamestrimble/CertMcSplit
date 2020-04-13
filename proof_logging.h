@@ -162,4 +162,8 @@ public:
     }
 };
 
+void proof_level_set(int level, std::ostream & proof_stream);
+
+void proof_level_wipe(int level, std::ostream & proof_stream);
+
 #endif

@@ -756,16 +756,6 @@ void write_solution(const vector<VtxPair> & current,
         pld.number_of_most_recent_objective_constraint = pld.last_constraint_num;
 }
 
-void proof_level_set(int level, std::ostream & proof_stream)
-{
-    proof_stream << "# " << level << std::endl;
-}
-
-void proof_level_wipe(int level, std::ostream & proof_stream)
-{
-    proof_stream << "w " << level << std::endl;
-}
-
 void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         vector<VtxPair> & current, vector<Bidomain> & domains,
         vector<int> & left, vector<int> & right, unsigned int matching_size_goal,
