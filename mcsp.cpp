@@ -240,6 +240,13 @@ public:
         constraints.push_back(constraint);
     }
 
+    void add_literal_iff_conjunction(Literal lit1, Literal lit2, Literal lit3)
+    {
+        add_constraint({{-1 * lit1, 1 * lit2}, 0});
+        add_constraint({{-1 * lit1, 1 * lit3}, 0});
+        add_constraint({{1 * lit1, -1 * lit2, -1 * lit3}, -1});
+    }
+
     void add_comment(std::string text)
     {
         comments.push_back({text, constraints.size()});
@@ -360,9 +367,9 @@ InequalityGeq constraint_A_implies_B_and_C(Literal lit1, Literal lit2, Literal l
     }
 }
 
-InequalityGeq connectedness_inductive_case_a(int k, int u, int v, int w, const Graph & pattern_g, int part)
+void add_connectedness_inductive_case_a(int k, int u, int v, int w, const Graph & pattern_g, PbModel & pb_model)
 {
-    return constraint_A_implies_B_and_C(c_var(k, u, v, w), c_var(k-1, u, v), c_var(k-1, v, w), part);
+    pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(k-1, v, w));
 }
 
 InequalityGeq connectedness_inductive_case_b_part_1(int k, int u, int w, const Graph & pattern_g,
@@ -495,9 +502,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
                             + " u=" + std::to_string(u)
                             + " v=" + std::to_string(v)
                             + " w=" + std::to_string(w));
-                    for (int part=1; part<=3; part++) {
-                        pb_model.add_constraint(connectedness_inductive_case_a(k, u, v, w, g0, part));
-                    }
+                    add_connectedness_inductive_case_a(k, u, v, w, g0, pb_model);
                 }
                 pb_model.add_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
@@ -549,9 +554,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
                             + " u=" + std::to_string(u)
                             + " v=" + std::to_string(v)
                             + " w=" + std::to_string(w));
-                    for (int part=1; part<=3; part++) {
-                        pb_model.add_constraint(connectedness_inductive_case_a(k, u, v, w, g0, part));
-                    }
+                    add_connectedness_inductive_case_a(k, u, v, w, g0, pb_model);
                 }
                 pb_model.add_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
