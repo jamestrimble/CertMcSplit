@@ -240,6 +240,17 @@ public:
         constraints.push_back(constraint);
     }
 
+    void add_equality_constraint(InequalityGeq constraint)
+    {
+        auto negated_constraint = constraint;
+        negated_constraint.rhs = -negated_constraint.rhs;
+        for (Term & term : negated_constraint.lhs) {
+            term.coef = -term.coef;
+        }
+        constraints.push_back(negated_constraint);
+        constraints.push_back(constraint);
+    }
+
     void add_literal_iff_conjunction(Literal lit1, Literal lit2, Literal lit3)
     {
         add_constraint({{-1 * lit1, 1 * lit2}, 0});
@@ -306,13 +317,14 @@ Literal c_var(int k, int u, int v, int w)
             + std::to_string(v+1) + "_" + std::to_string(w+1);
 }
 
-InequalityGeq mapping_constraint(int p, int target_count, bool direction)
+// An equality constraint
+InequalityGeq mapping_constraint(int p, int target_count)
 {
     InequalityGeq constraint {};
     for (int t=-1; t<target_count; t++) {
-        constraint.add_term((direction ? 1 : -1) * assignment_var(p, t));
+        constraint.add_term(-1 * assignment_var(p, t));
     }
-    constraint.set_rhs(direction ? 1 : -1);
+    constraint.set_rhs(-1);
     return constraint;
 }
 
@@ -354,19 +366,6 @@ InequalityGeq objective_constraint(int pattern_count, int target_count, int goal
     return constraint;
 }
 
-// The A <===> B AND C decomposition has three parts.
-// `part` is 1, 2, or 3
-InequalityGeq constraint_A_implies_B_and_C(Literal lit1, Literal lit2, Literal lit3, int part)
-{
-    if (part == 1) {
-        return {{-1 * lit1, 1 * lit2}, 0};
-    } else if (part == 2) {
-        return {{-1 * lit1, 1 * lit3}, 0};
-    } else {
-        return {{1 * lit1, -1 * lit2, -1 * lit3}, -1};
-    }
-}
-
 void add_connectedness_inductive_case_a(int k, int u, int v, int w, const Graph & pattern_g, PbModel & pb_model)
 {
     pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(k-1, v, w));
@@ -392,9 +391,9 @@ InequalityGeq connectedness_inductive_case_b_part_2(int k, int u, int v, int w, 
     return {{1 * c_var(k, u, w), 1 * ~c_var(k, u, v, w)}, 1};
 }
 
-InequalityGeq connectedness_inductive_case_a_version_3(int k, int u, int v, int w, const Graph & pattern_g, int part)
+void add_connectedness_inductive_case_a_version_3(int k, int u, int v, int w, const Graph & pattern_g, PbModel & pb_model)
 {
-    return constraint_A_implies_B_and_C(c_var(k, u, v, w), c_var(k-1, u, v), c_var(1, v, w), part);
+    pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(1, v, w));
 }
 
 InequalityGeq connectedness_inductive_case_b_version_3_part_1(int k, int u, int w, const Graph & pattern_g)
@@ -416,23 +415,17 @@ InequalityGeq connectedness_inductive_case_b_version_3_part_2(int k, int u, int 
     return {{1 * c_var(k, u, w), 1 * ~c_var(k, u, v, w)}, 1};
 }
 
-InequalityGeq connectedness_base_constraint_2vv(int u, int w, const Graph & pattern_g,
-        int index_of_base_variable, int part)
+void add_connectedness_base_constraint_2vv(int u, int w, const Graph & pattern_g,
+        int index_of_base_variable, PbModel & pb_model)
 {
-    return constraint_A_implies_B_and_C(
-            c_var(index_of_base_variable, u, w),
-            ~assignment_var(u, -1),
-            ~assignment_var(w, -1),
-            part);
+    pb_model.add_literal_iff_conjunction(c_var(index_of_base_variable, u, w),
+            ~assignment_var(u, -1), ~assignment_var(w, -1));
 }
 
-// The A <===> B decomposition has two parts.
-// `part` is 1 or 2
-InequalityGeq connectedness_base_constraint_1v(int k, int u, const Graph & pattern_g,
-        int part)
+// An equality constraint for A <===> B
+InequalityGeq connectedness_base_constraint_1v(int k, int u, const Graph & pattern_g)
 {
-    int coef = part==2 ? 1 : -1;
-    return {{coef * ~c_var(k, u, u), coef * ~assignment_var(u, -1)}, coef};
+    return {{1 * ~c_var(k, u, u), 1 * ~assignment_var(u, -1)}, 1};
 }
 
 InequalityGeq connectedness_constraint(int K, int p, int q)
@@ -470,14 +463,10 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
         for (int w=0; w<g0.n; w++) {
             if (u == w) {
                 pb_model.add_comment("Base connectedness constraint for vertex " + std::to_string(u));
-                for (int part=1; part<=2; part++) {
-                    pb_model.add_constraint(connectedness_base_constraint_1v(0, u, g0, part));
-                }
+                pb_model.add_equality_constraint(connectedness_base_constraint_1v(0, u, g0));
             } else if (g0.adjmat[u][w]) {
                 pb_model.add_comment("Base connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
-                for (int part=1; part<=3; part++) {
-                    pb_model.add_constraint(connectedness_base_constraint_2vv(u, w, g0, 0, part));
-                }
+                add_connectedness_base_constraint_2vv(u, w, g0, 0, pb_model);
             } else {
                 pb_model.add_comment("Base case non-connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
                 pb_model.add_constraint({{-1 * c_var(0, u, w)}, 0});
@@ -490,9 +479,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
     for (int k=1; k<=K; k++) {
         for (int u=0; u<g0.n; u++) {
             pb_model.add_comment("Base connectedness constraint for vertex " + std::to_string(u));
-            for (int part=1; part<=2; part++) {
-                pb_model.add_constraint(connectedness_base_constraint_1v(k, u, g0, part));
-            }
+            pb_model.add_equality_constraint(connectedness_base_constraint_1v(k, u, g0));
             for (int w=0; w<g0.n; w++) {
                 if (u == w) {
                     continue;
@@ -528,9 +515,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
             }
             if (g0.adjmat[u][w]) {
                 pb_model.add_comment("Base connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
-                for (int part=1; part<=3; part++) {
-                    pb_model.add_constraint(connectedness_base_constraint_2vv(u, w, g0, 0, part));
-                }
+                add_connectedness_base_constraint_2vv(u, w, g0, 0, pb_model);
             } else {
                 pb_model.add_comment("Base case non-connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
                 pb_model.add_constraint({{-1 * c_var(0, u, w)}, 0});
@@ -586,9 +571,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
             }
             if (g0.adjmat[u][w]) {
                 pb_model.add_comment("Base connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
-                for (int part=1; part<=3; part++) {
-                    pb_model.add_constraint(connectedness_base_constraint_2vv(u, w, g0, 1, part));
-                }
+                add_connectedness_base_constraint_2vv(u, w, g0, 1, pb_model);
             } else {
                 pb_model.add_comment("Base case non-connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
                 pb_model.add_constraint({{-1 * c_var(1, u, w)}, 0});
@@ -612,9 +595,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
                             + " u=" + std::to_string(u)
                             + " v=" + std::to_string(v)
                             + " w=" + std::to_string(w));
-                    for (int part=1; part<=3; part++) {
-                        pb_model.add_constraint(connectedness_inductive_case_a_version_3(k, u, v, w, g0, part));
-                    }
+                    add_connectedness_inductive_case_a_version_3(k, u, v, w, g0, pb_model);
                 }
                 pb_model.add_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
@@ -667,8 +648,7 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
 
     for (int i=0; i<g0.n; i++) {
         pb_model.add_comment("Mapping constraint for pattern vertex " + std::to_string(i));
-        pb_model.add_constraint(mapping_constraint(i, g1.n, true));
-        pb_model.add_constraint(mapping_constraint(i, g1.n, false));
+        pb_model.add_equality_constraint(mapping_constraint(i, g1.n));
         mapping_constraint_nums[i] = pb_model.last_constraint_number();
     }
     for (int i=0; i<g1.n; i++) {
