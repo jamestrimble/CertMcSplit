@@ -1,3 +1,6 @@
+#ifndef GRAPH_H
+#define GRAPH_H
+
 #include <limits.h>
 #include <stdbool.h>
 
@@ -14,3 +17,4 @@ Graph induced_subgraph(struct Graph& g, std::vector<int> vv);
 
 Graph readGraph(char* filename, char format, bool directed, bool edge_labelled, bool vertex_labelled);
 
+#endif
