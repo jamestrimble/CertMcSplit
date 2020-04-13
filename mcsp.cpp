@@ -17,9 +17,6 @@
 
 #include <argp.h>
 
-// TODO: make this non-global
-int number_of_most_recent_objective_constraint = 1;
-
 using std::vector;
 using std::cout;
 using std::endl;
@@ -859,6 +856,7 @@ struct ProofLoggingData
     const vector<int> & injectivity_constraint_nums;
     int & last_constraint_num;
     vector<Literal> & decisions;
+    int number_of_most_recent_objective_constraint = 1;
 };
 
 void write_bound_constraint(
@@ -895,7 +893,7 @@ void write_bound_constraint(
         }
         first = false;
     }
-    *pld.proof_stream << number_of_most_recent_objective_constraint << " + 0";
+    *pld.proof_stream << pld.number_of_most_recent_objective_constraint << " + 0";
     *pld.proof_stream << std::endl;
     ++pld.last_constraint_num;
 }
@@ -925,7 +923,7 @@ void write_solution(const vector<VtxPair> & current,
     *pld.proof_stream << std::endl;
     ++pld.last_constraint_num;
     if (prefix == 'o')
-        number_of_most_recent_objective_constraint = pld.last_constraint_num;
+        pld.number_of_most_recent_objective_constraint = pld.last_constraint_num;
 }
 
 void proof_level_set(int level, std::ostream & proof_stream)
