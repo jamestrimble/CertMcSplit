@@ -242,12 +242,12 @@ public:
 
     void add_equality_constraint(InequalityGeq constraint)
     {
-        auto negated_constraint = constraint;
-        negated_constraint.rhs = -negated_constraint.rhs;
-        for (Term & term : negated_constraint.lhs) {
+        constraints.push_back(constraint);
+        // negate lhs and rhs
+        constraint.rhs = -constraint.rhs;
+        for (Term & term : constraint.lhs) {
             term.coef = -term.coef;
         }
-        constraints.push_back(negated_constraint);
         constraints.push_back(constraint);
     }
 
@@ -322,9 +322,9 @@ InequalityGeq mapping_constraint(int p, int target_count)
 {
     InequalityGeq constraint {};
     for (int t=-1; t<target_count; t++) {
-        constraint.add_term(-1 * assignment_var(p, t));
+        constraint.add_term(1 * assignment_var(p, t));
     }
-    constraint.set_rhs(-1);
+    constraint.set_rhs(1);
     return constraint;
 }
 
