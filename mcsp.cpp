@@ -304,12 +304,18 @@ Literal assignment_var(int p, int t)
 
 Literal c_var(int k, int u, int w)
 {
+    if (u > w) {
+        std::swap(u, w);
+    }
     return "xc" + std::to_string(k) + "_" + std::to_string(u+1) + "_"
             + std::to_string(w+1);
 }
 
 Literal c_var(int k, int u, int v, int w)
 {
+    if (u > w) {
+        std::swap(u, w);
+    }
     return "xc" + std::to_string(k) + "_" + std::to_string(u+1) + "_"
             + std::to_string(v+1) + "_" + std::to_string(w+1);
 }
@@ -408,10 +414,7 @@ InequalityGeq connectedness_base_constraint_1v(int k, int u, const Graph & patte
 void add_connectivity_constraints(PbModel & pb_model, const Graph & g0, int K)
 {
     for (int p=0; p<g0.n; p++) {
-        for (int q=0; q<g0.n; q++) {
-            if (p == q) {
-                continue;
-            }
+        for (int q=p+1; q<g0.n; q++) {
             pb_model.add_comment("Connectedness constraint p=" + std::to_string(p) + " q=" + std::to_string(q));
             pb_model.add_constraint({{1 * c_var(K, p, q), 1 * assignment_var(p, -1), 1 * assignment_var(q, -1)}, 1});
         }
@@ -432,7 +435,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
 {
     // base case
     for (int u=0; u<g0.n; u++) {
-        for (int w=0; w<g0.n; w++) {
+        for (int w=u; w<g0.n; w++) {
             if (u == w) {
                 pb_model.add_comment("Base connectedness constraint for vertex " + std::to_string(u));
                 pb_model.add_equality_constraint(connectedness_base_constraint_1v(0, u, g0));
@@ -452,10 +455,7 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
         for (int u=0; u<g0.n; u++) {
             pb_model.add_comment("Base connectedness constraint for vertex " + std::to_string(u));
             pb_model.add_equality_constraint(connectedness_base_constraint_1v(k, u, g0));
-            for (int w=0; w<g0.n; w++) {
-                if (u == w) {
-                    continue;
-                }
+            for (int w=u+1; w<g0.n; w++) {
                 for (int v=0; v<g0.n; v++) {
                     pb_model.add_comment("Inductive connectedness constraint part a for k=" + std::to_string(k)
                             + " u=" + std::to_string(u)
@@ -481,10 +481,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
 {
     // base case
     for (int u=0; u<g0.n; u++) {
-        for (int w=0; w<g0.n; w++) {
-            if (u == w) {
-                continue;
-            }
+        for (int w=u+1; w<g0.n; w++) {
             if (g0.adjmat[u][w]) {
                 pb_model.add_comment("Base connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
                 add_connectedness_base_constraint_2vv(u, w, g0, 0, pb_model);
@@ -499,10 +496,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
     int K = ceil_of_log_base_2(g0.n - 1);
     for (int k=1; k<=K; k++) {
         for (int u=0; u<g0.n; u++) {
-            for (int w=0; w<g0.n; w++) {
-                if (u == w) {
-                    continue;
-                }
+            for (int w=u+1; w<g0.n; w++) {
                 for (int v=0; v<g0.n; v++) {
                     if (u == v || w == v) {
                         continue;
@@ -537,10 +531,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
 {
     // base case
     for (int u=0; u<g0.n; u++) {
-        for (int w=0; w<g0.n; w++) {
-            if (u == w) {
-                continue;
-            }
+        for (int w=u+1; w<g0.n; w++) {
             if (g0.adjmat[u][w]) {
                 pb_model.add_comment("Base connectedness constraint for vertices " + std::to_string(u) + " and " + std::to_string(w));
                 add_connectedness_base_constraint_2vv(u, w, g0, 1, pb_model);
@@ -555,10 +546,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
     int K = g0.n - 1;
     for (int k=2; k<=K; k++) {
         for (int u=0; u<g0.n; u++) {
-            for (int w=0; w<g0.n; w++) {
-                if (u == w) {
-                    continue;
-                }
+            for (int w=u+1; w<g0.n; w++) {
                 for (int v=0; v<g0.n; v++) {
                     if (u == v || !g0.adjmat[v][w]) {
                         continue;
@@ -629,10 +617,7 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
         injectivity_constraint_nums[i] = pb_model.last_constraint_number();
     }
     for (int p=0; p<g0.n; p++) {
-        for (int q=0; q<g0.n; q++) {
-            if (q==p) {
-                continue;
-            }
+        for (int q=p+1; q<g0.n; q++) {
             pb_model.add_comment("Adjacency constraints for pattern edge or non-edge "
                     + std::to_string(p) + "," + std::to_string(q));
             for (int t=0; t<g1.n; t++) {
