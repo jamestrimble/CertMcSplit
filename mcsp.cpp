@@ -381,11 +381,6 @@ InequalityGeq connectedness_inductive_case_b_part_1(int k, int u, int w, const G
     return constraint;
 }
 
-void add_connectedness_inductive_case_a_version_3(int k, int u, int v, int w, const Graph & pattern_g, PbModel & pb_model)
-{
-    pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(1, v, w));
-}
-
 InequalityGeq connectedness_inductive_case_b_version_3_part_1(int k, int u, int w, const Graph & pattern_g)
 {
     InequalityGeq constraint {};
