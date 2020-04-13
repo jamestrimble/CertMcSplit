@@ -366,11 +366,6 @@ InequalityGeq objective_constraint(int pattern_count, int target_count, int goal
     return constraint;
 }
 
-void add_connectedness_inductive_case_a(int k, int u, int v, int w, const Graph & pattern_g, PbModel & pb_model)
-{
-    pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(k-1, v, w));
-}
-
 InequalityGeq connectedness_inductive_case_b_part_1(int k, int u, int w, const Graph & pattern_g,
         bool exclude_u_and_w)
 {
@@ -384,11 +379,6 @@ InequalityGeq connectedness_inductive_case_b_part_1(int k, int u, int w, const G
     }
     constraint.set_rhs(1);
     return constraint;
-}
-
-InequalityGeq connectedness_inductive_case_b_part_2(int k, int u, int v, int w, const Graph & pattern_g)
-{
-    return {{1 * c_var(k, u, w), 1 * ~c_var(k, u, v, w)}, 1};
 }
 
 void add_connectedness_inductive_case_a_version_3(int k, int u, int v, int w, const Graph & pattern_g, PbModel & pb_model)
@@ -489,14 +479,14 @@ void add_connectivity_to_pb_model_version_1(PbModel & pb_model, const Graph & g0
                             + " u=" + std::to_string(u)
                             + " v=" + std::to_string(v)
                             + " w=" + std::to_string(w));
-                    add_connectedness_inductive_case_a(k, u, v, w, g0, pb_model);
+                    pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(k-1, v, w));
                 }
                 pb_model.add_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
                         + " w=" + std::to_string(w));
                 pb_model.add_constraint(connectedness_inductive_case_b_part_1(k, u, w, g0, false));
                 for (int v=0; v<g0.n; v++) {
-                    pb_model.add_constraint(connectedness_inductive_case_b_part_2(k, u, v, w, g0));
+                    pb_model.add_constraint({{1 * c_var(k, u, w), 1 * ~c_var(k, u, v, w)}, 1});
                 }
             }
         }
@@ -539,7 +529,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
                             + " u=" + std::to_string(u)
                             + " v=" + std::to_string(v)
                             + " w=" + std::to_string(w));
-                    add_connectedness_inductive_case_a(k, u, v, w, g0, pb_model);
+                    pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(k-1, v, w));
                 }
                 pb_model.add_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
@@ -551,7 +541,7 @@ void add_connectivity_to_pb_model_version_2(PbModel & pb_model, const Graph & g0
                     if (u == v || w == v) {
                         continue;
                     }
-                    pb_model.add_constraint(connectedness_inductive_case_b_part_2(k, u, v, w, g0));
+                    pb_model.add_constraint({{1 * c_var(k, u, w), 1 * ~c_var(k, u, v, w)}, 1});
                 }
                 pb_model.add_constraint({{1 * c_var(k, u, w), 1 * ~c_var(k-1, u, w)}, 1});
             }
@@ -595,7 +585,7 @@ void add_connectivity_to_pb_model_version_3(PbModel & pb_model, const Graph & g0
                             + " u=" + std::to_string(u)
                             + " v=" + std::to_string(v)
                             + " w=" + std::to_string(w));
-                    add_connectedness_inductive_case_a_version_3(k, u, v, w, g0, pb_model);
+                    pb_model.add_literal_iff_conjunction(c_var(k, u, v, w), c_var(k-1, u, v), c_var(1, v, w));
                 }
                 pb_model.add_comment("Inductive connectedness constraint part b for k=" + std::to_string(k)
                         + " u=" + std::to_string(u)
