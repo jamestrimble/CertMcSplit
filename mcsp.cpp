@@ -918,6 +918,8 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
         solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, pld);
     } else {
         auto domains_copy = domains;
+        // Initial solution has size zero
+        write_solution(current, g0, g1, 'o', pld);
         solve(g0, g1, incumbent, current, domains_copy, left, right, 1, pld);
     }
     if (proof_stream && (arguments.count_solutions || arguments.decision_size == -1 || int(incumbent.size()) < arguments.decision_size)) {
