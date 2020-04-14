@@ -462,7 +462,10 @@ PbModel build_pb_model(const Graph & g0, const Graph & g1, int target_subgraph_s
         injectivity_constraint_nums[i] = pb_model.last_constraint_number();
     }
     for (int p=0; p<g0.n; p++) {
-        for (int q=p+1; q<g0.n; q++) {
+        for (int q=0; q<g0.n; q++) {
+            if (p == q) {
+                continue;
+            }
             pb_model.add_comment("Adjacency constraints for pattern edge or non-edge "
                     + std::to_string(p) + "," + std::to_string(q));
             for (int t=0; t<g1.n; t++) {
