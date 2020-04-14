@@ -734,7 +734,29 @@ void write_bound_constraint(
 void write_solution(const vector<VtxPair> & current,
         const Graph & pattern_g,
         const Graph & target_g,
-        char prefix,
+        ProofLoggingData & pld)
+{
+    vector<int> vtx_assignment(pattern_g.n, -1);
+    for (auto assignment : current) {
+        int v = pld.vtx_name0[assignment.v];
+        int w = pld.vtx_name1[assignment.w];
+        vtx_assignment[v] = w;
+    }
+    *pld.proof_stream << 'v';
+    for (int v=0; v<pattern_g.n; v++) {
+        int w = vtx_assignment[v];
+        *pld.proof_stream << " " << assignment_var(v, w).var;
+    }
+    *pld.proof_stream << std::endl;
+    ++pld.last_constraint_num;
+}
+
+// VeriPB currently requires that we explicitly give the value of every variable
+// that occurs in the objective function.  Hence, the output of this function
+// is more verbose than the output of write_solution.
+void write_updated_incumbent(const vector<VtxPair> & current,
+        const Graph & pattern_g,
+        const Graph & target_g,
         ProofLoggingData & pld)
 {
     vector<vector<bool>> assignment_made(pattern_g.n, vector<bool>(target_g.n));
@@ -743,7 +765,7 @@ void write_solution(const vector<VtxPair> & current,
         int w = pld.vtx_name1[assignment.w];
         assignment_made[v][w] = true;
     }
-    *pld.proof_stream << prefix;
+    *pld.proof_stream << 'o';
     for (int v=0; v<pattern_g.n; v++) {
         for (int w=0; w<pattern_g.n; w++) {
             if (assignment_made[v][w]) {
@@ -755,8 +777,7 @@ void write_solution(const vector<VtxPair> & current,
     }
     *pld.proof_stream << std::endl;
     ++pld.last_constraint_num;
-    if (prefix == 'o')
-        pld.number_of_most_recent_objective_constraint = pld.last_constraint_num;
+    pld.number_of_most_recent_objective_constraint = pld.last_constraint_num;
 }
 
 void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
@@ -777,7 +798,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         incumbent = current;
         if (arguments.decision_size==-1 && pld.proof_stream) {
             proof_level_set(0, *pld.proof_stream);
-            write_solution(current, g0, g1, 'o', pld);
+            write_updated_incumbent(current, g0, g1, pld);
             proof_level_set(current.size(), *pld.proof_stream);
         }
     }
@@ -822,7 +843,7 @@ void solve(const Graph & g0, const Graph & g1, vector<VtxPair> & incumbent,
         if (arguments.count_solutions && current.size() >= matching_size_goal) {
             ++solution_count;
             if (pld.proof_stream) {
-                write_solution(current, g0, g1, 'v', pld);
+                write_solution(current, g0, g1, pld);
             }
         }
 
@@ -915,14 +936,14 @@ vector<VtxPair> mcs(const Graph & g0, const Graph & g1,
         if (arguments.count_solutions && 0 == arguments.decision_size) {
             ++solution_count;
             if (proof_stream) {
-                write_solution(current, g0, g1, 'v', pld);
+                write_solution(current, g0, g1, pld);
             }
         }
         solve(g0, g1, incumbent, current, domains, left, right, arguments.decision_size, pld);
     } else {
         auto domains_copy = domains;
         // Initial solution has size zero
-        write_solution(current, g0, g1, 'o', pld);
+        write_updated_incumbent(current, g0, g1, pld);
         solve(g0, g1, incumbent, current, domains_copy, left, right, 1, pld);
     }
     if (proof_stream && (arguments.count_solutions || arguments.decision_size == -1 || int(incumbent.size()) < arguments.decision_size)) {
